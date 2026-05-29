@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Information & Material Pull Sheet</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>html,body,#root{height:100%;margin:0;}</style>
+</head>
+<body>
+<div id="root"></div>
+<script id="saved-state" type="application/json">null</script>
+<script id="app-source" type="text/babel" data-presets="react">
+const { useState, useMemo, useEffect } = React;
+
+/* =========================================================================
+   MASTER DATA — parsed from the Job Information & Material Pull Sheet.
+   Typos cleaned for the printed output. Edit here; the tool updates.
+   ========================================================================= */
+const JOB_TYPES = [
+  "Split Heat Pump Change Out",
+  "Gas Furnace Coil & Condenser Change Out",
+  "Furnace Only Change Out",
+  "Coil & Condenser Change Out Only",
+  "Gas Pack Change Out",
+  "Package Heat Pump Change Out",
+  "Mini Split Install New",
+  "Mini Split Change Out",
+  "Duct System Only",
+  "Split Heat Pump Change Out & Duct System",
+  "Gas Furnace Coil & Condenser Change Out & Duct System",
+  "Furnace Only Change Out & Duct System",
+  "Coil & Condenser Change Out Only & Duct System",
+  "Package Heat Pump Change Out & Duct System",
+  "Split Heat Pump Change Out With Zone System",
+  "Gas Furnace Coil & Condenser Change Out With Zone System",
+  "Furnace Only Change Out With Zone System",
+  "Coil & Condenser Change Out Only With Zone System",
+  "Split Heat Pump Change Out & Duct System With Zone System",
+  "Gas Furnace Coil & Condenser Change Out & Duct System With Zone System",
+  "Furnace Only Change Out & Duct System With Zone System",
+  "Coil & Condenser Change Out Only & Duct System With Zone System",
+];
+
+const LOCATIONS = [
+  "Knee Wall", "Basement", "Garage",
+  "Attic 1st Floor", "Attic 2nd Floor", "Attic 3rd Floor",
+  "Crawl Space 1st Floor", "Crawl Space 2nd Floor", "Crawl Space 3rd Floor",
+  "Closet 1st Floor Upflow", "Closet 1st Floor Downflow",
+  "Closet 2nd Floor Upflow", "Closet 2nd Floor Downflow",
+  "Bonus Room (Mini Split)", "Garage (Mini Split)", "Package Unit Install",
+];
+
+const EQUIP_BRANDS = ["Lennox", "Ruud", "MoovAir", "Mitsubishi", "Daikin", "Durastar", "Goodman", "Bosch", "Heil"];
+const PICKUP_LOCATIONS = [
+  "Lennox Morrisville", "Lennox Knightdale", "Ferguson Holly Springs", "Ferguson Apex",
+  "Ferguson Durham", "Ferguson Garner", "Ferguson Aberdeen",
+  "Ferguson Raleigh Yankers Rd", "Ferguson Raleigh Rogers Ln",
+];
+const MECHANICS = ["Travis Lloyd", "Jeremy Paul", "Shawn Cox", "Elijah Thomas", "John Austin",
+  "Aiden Hillard", "Chris Archer", "Tyrell McCray", "Justin Moxley", "Demarqus Moore", "Hesham Gamaan"];
+const HELPERS = ["Quentin McClain", "Taylor Robinson", "Austin Hunter", "Shayne Mallory", "Gabe Blanton",
+  "Parker Belch", "Sean Thompson", "Gabriel deBeus", "Timothy Omelas", "Darius Jacobs", "Cooper Creel", "Chandler Parker"];
+const ALL_INSTALLERS = [...MECHANICS, ...HELPERS];
+
+const INTERIOR_ACCESS = ["6ft Ladder", "8ft Ladder", "Pull-Down Staircase", "Walk-in Attic"];
+const EXT_LADDERS = ["24ft Ladder", "28ft Ladder", "32ft Ladder", "40ft Ladder"];
+
+const CATALOG = {
+  jobBoxes: ["Basic Job Box", "PVC & Copper Job Box", "Electrical Job Box", "Gas Fitting Job Box",
+    "90% Furnace PVC Job Box", "B-Vent Metal Fab Job Box", "B-Vent Hart & Cooley Job Box",
+    "Duct Material Job Box", "Zone System Job Box"],
+  thermostats: ["ECONET RETST800SYS", "Honeywell THT2320WF4010", "Honeywell THT2320U4006",
+    "Honeywell THT1320U4002", "HW Elite PRO YTHX1200WS", "Honeywell TH8320R1003", "LENNOX S40 Touchscreen", "ECONET RUUD"],
+  zoneControls: ["HARMONY 3 LENNOX LZSV", "ECONET RUUD"],
+  zoneDampers: ['10"', '12"', '14"', '16"', '18"'],
+  drainPans: ["22 x 6 x 8 Rail", "30 x 36", "30 x 60", "32 x 72"],
+  equipmentPads: ["24 x 48 x 3", "36 x 36 x 3", "40 x 40 x 3", "45 x 58 x 3", "52 x 52 x 3", "56 x 58 x 3"],
+  lineSetSizes: ['3/8" x 3/4" 35FT', '3/8" x 3/4" 50FT', '3/8" x 7/8" 30FT', '3/8" x 7/8" 50FT'],
+  lineSetFittings: ["Line Set Cover", "Eve Penetration", "Sidewall Penetration", "End Piece", "Elbow", "Coupling"],
+  supplyGrills: ["4 x 10", "4 x 12", "4 x 14", "6 x 10", "6 x 12", "2 x 10", "2 x 12", "2 x 14", "Floor Grill", "Ceiling Grill"],
+  filterGrills: ["12 x 12 x 1", "14 x 20 x 1", "14 x 25 x 1", "16 x 20 x 1", "16 x 25 x 1", "20 x 20 x 1", "20 x 25 x 1"],
+  filters: ["12 x 12 x 1", "14 x 20 x 1", "14 x 25 x 1", "16 x 20 x 1", "16 x 25 x 1", "20 x 20 x 1", "20 x 25 x 1"],
+  flexReturn: ['6" R8', '8" R8', '10" R8', '12" R8', '14" R8', '16" R8', '18" R8'],
+  flexSupply: ['6" R8', '8" R8', '10" R8', '12" R8', '14" R8', '16" R8', '18" R8'],
+  roundDuct: ['10"', '12"', '14"', '16"', '18"'],
+  squareToRound: ["14 x 20 x 12", "14 x 20 x 14", "14 x 20 x 16", "14 x 20 x 18", "16 x 20 x 12", "16 x 20 x 14",
+    "16 x 20 x 16", "16 x 20 x 18", "20 x 20 x 12", "20 x 20 x 14", "20 x 20 x 16", "20 x 20 x 18", "20 x 25 x 14", "20 x 25 x 16", "20 x 25 x 18"],
+  wye: ["14 x 12 x 12", "16 x 14 x 14", "18 x 16 x 16"],
+  tee: ["12 x 12 x 12", "14 x 14 x 14", "16 x 16 x 16", "18 x 18 x 18"],
+  elbow: ['6"', '8"', '10"', '12"', '14"', '16"', '18"'],
+  endCap: ['6"', '8"', '10"', '12"', '14"', '16"'],
+  reducer: ['4" x 6"', '6" x 8"', '10" x 12"', '10" x 14"', '10" x 16"', '12" x 14"', '12" x 16"', '14" x 16"', '16" x 18"'],
+  saddleCollar: ['6"', '8"', '10"', '12"', '14"'],
+  aCollar: ['4"', '6"', '8"', '10"', '12"', '14"', '16"', '18"'],
+  supplyBox: ["16 x 20 x 24", "16 x 20 x 48"],
+  returnBox: ["16 x 20 x 24", "16 x 20 x 48", "19 x 20 x 24", "16 x 26 x 24"],
+  sheetMetal: ['48" x 96" 26ga Flat Metal', "S Cleat 10'", "Standing Lock 10'"],
+  ductWrapCat: ["Duct Wrap"],
+  breakerBrands: ["Square D Homeline", "Square D QO", "GE", "Eaton Black", "Cutler Hammer Brown Handle", "Siemens"],
+  breakerDouble: ["15 Amp", "20 Amp", "25 Amp", "30 Amp", "35 Amp", "40 Amp", "45 Amp", "50 Amp", "60 Amp"],
+  breakerSingle: ["15 Amp", "20 Amp"],
+  tandem: ["15 Amp", "20 Amp"],
+  surge: ["Surge AG3001", "ICP493 Surge"],
+  iaq: ["PHI-PKG-5 RGF", "Air Scrubber", "Reme Halo LED", "Reme Halo", "Blue Tube"],
+  mediaCleaner: ["HF100F1620 1200cfm", "HF100F1625 1400cfm", "HF100F2020 1400cfm", "HF100F2025 1700cfm"],
+  misc: ['OSB Plywood 3/4"', 'Plywood Treated 3/4"', "2 x 4 x 8 Not Treated", "2 x 4 x 8 Treated", "Door Molding",
+    'Brick Lintel 48"', "Mortar Mix", '8" Block', '4" Block', 'Red Brick 4"', 'Door Hinges 3"', "3.5 Swivel Hasp",
+    'Unistrut 1.5" x 10\'', 'Threaded Rod 3/8"', '3/8" Washers', "3/8 Nuts"],
+  block: ["Block 16 x 8 x 8", "Block 16 x 8 x 4", "Red Brick 2 x 4 x 6"],
+  pvcAddon: ['2" PVC Pipe 10ft', '3" PVC Pipe 10ft', "Duct Wrap"],
+  concentric: ['2" Concentric Kit', '3" Concentric Kit'],
+};
+
+const VIDEO_CHECKLIST = {
+  "Outside / Exterior": ["Outside unit", "Left side", "Right side", "Front side", "Electric Disconnects",
+    "Main Panel", "Gas Meter", "Front of House", "Right side of house", "Left side of house", "Back of house", "Close-up of window"],
+  "Inside / Unit": ["Attic insulation", "Crawl Hole Door", "Inside Unit", "Access Hole", "Walk-Way", "Platform",
+    "Front of Unit", "Back of Unit", "Supply Plenum", "Return Plenum", "Trunk line Duct Work", "Return flex", "Existing Damage"],
+  "Electrical": ["Disconnect", "Connection at unit"],
+  "Gas": ["Shut-Off", "Union", "Drip Leg"],
+  "Thermostat": ["Existing location", "New location"],
+  "Grilles": ["Return Grill", "New grill location", "Supply Grill", "New Location unit"],
+};
+
+/* ---- CONDITIONAL LOGIC: job type → which job boxes auto-pull ----
+   Rules taken from the sheet + flagged inferences (see chat message). */
+function deriveFlags(jt) {
+  const isDuctOnly = jt === "Duct System Only";
+  const hasDuct = /Duct System/.test(jt);            // includes duct-only
+  const hasZone = /Zone System/.test(jt);
+  const isGas = /Gas Furnace|Furnace Only|Gas Pack/.test(jt);
+  const isMiniSplit = /Mini Split/.test(jt);
+  return { isDuctOnly, hasDuct, hasZone, isGas, isMiniSplit };
+}
+function autoBoxesFor(jt) {
+  if (!jt) return new Set();
+  const f = deriveFlags(jt);
+  const s = new Set();
+  if (!f.isDuctOnly) { s.add("Basic Job Box"); s.add("PVC & Copper Job Box"); s.add("Electrical Job Box"); }
+  if (f.isGas) s.add("Gas Fitting Job Box");
+  if (f.hasDuct) s.add("Duct Material Job Box");
+  if (f.hasZone) s.add("Zone System Job Box");
+  return s;
+}
+
+const SECTIONS = [
+  { key: "thermostats", title: "Thermostat", cat: "thermostats", mode: "single", group: "Controls" },
+  { key: "zoneControls", title: "Zone Control", cat: "zoneControls", mode: "single", group: "Controls" },
+  { key: "zoneDampers", title: "Zone Damper", cat: "zoneDampers", mode: "multi", group: "Controls" },
+  { key: "drainPans", title: "Drain Pan", cat: "drainPans", mode: "single", group: "Equipment Support" },
+  { key: "equipmentPads", title: "Equipment Pad", cat: "equipmentPads", mode: "single", group: "Equipment Support" },
+  { key: "filters", title: "Filter", cat: "filters", mode: "multi", group: "Air Distribution" },
+  { key: "filterGrills", title: "Filter Grill", cat: "filterGrills", mode: "multi", group: "Air Distribution" },
+  { key: "supplyGrills", title: "Supply Grill", cat: "supplyGrills", mode: "multi", group: "Air Distribution" },
+  { key: "flexSupply", title: "Flex Supply", cat: "flexSupply", mode: "multi", group: "Air Distribution" },
+  { key: "flexReturn", title: "Flex Return", cat: "flexReturn", mode: "multi", group: "Air Distribution" },
+  { key: "roundDuct", title: "Round Duct", cat: "roundDuct", mode: "multi", group: "Ductwork" },
+  { key: "squareToRound", title: "Square to Round", cat: "squareToRound", mode: "multi", group: "Ductwork" },
+  { key: "supplyBox", title: "Supply Box", cat: "supplyBox", mode: "multi", group: "Ductwork" },
+  { key: "returnBox", title: "Return Box", cat: "returnBox", mode: "multi", group: "Ductwork" },
+  { key: "sheetMetal", title: "Sheet Metal", cat: "sheetMetal", mode: "multi", group: "Ductwork" },
+  { key: "ductWrap", title: "Duct Wrap", cat: "ductWrapCat", mode: "multi", group: "Ductwork" },
+  { key: "wye", title: "Wye", cat: "wye", mode: "multi", group: "Fittings" },
+  { key: "tee", title: "Tee", cat: "tee", mode: "multi", group: "Fittings" },
+  { key: "elbow", title: "Elbow", cat: "elbow", mode: "multi", group: "Fittings" },
+  { key: "reducer", title: "Reducer", cat: "reducer", mode: "multi", group: "Fittings" },
+  { key: "endCap", title: "End Cap", cat: "endCap", mode: "multi", group: "Fittings" },
+  { key: "saddleCollar", title: "Saddle Collar", cat: "saddleCollar", mode: "multi", group: "Fittings" },
+  { key: "aCollar", title: "A Collar", cat: "aCollar", mode: "multi", group: "Fittings" },
+  { key: "iaq", title: "IAQ", cat: "iaq", mode: "multi", group: "Air Quality" },
+  { key: "mediaCleaner", title: "Media Air Cleaner", cat: "mediaCleaner", mode: "single", group: "Air Quality" },
+  { key: "lineSetFittings", title: "Line Set Cover & Fittings", cat: "lineSetFittings", mode: "multi", group: "Line Set" },
+  { key: "misc", title: "Misc Material", cat: "misc", mode: "multi", group: "Misc" },
+  { key: "block", title: "Block / Brick", cat: "block", mode: "multi", group: "Misc" },
+];
+
+const PULL_ORDER = ["Equipment", "Portables", "Job Boxes", "Venting", "Gas", "Line Set", "Controls", "Equipment Support",
+  "Air Distribution", "Ductwork", "Fittings", "Electrical", "Air Quality", "Misc", "Access / Tools"];
+
+// Electrical items get separate Indoor + Outdoor quantities
+const ELEC_SECTIONS = [
+  { key: "breakerDouble", title: "Breaker Double Pole", cat: "breakerDouble" },
+  { key: "breakerSingle", title: "Breaker Single Pole", cat: "breakerSingle" },
+  { key: "tandem", title: "Tandem Breaker", cat: "tandem" },
+  { key: "surge", title: "Surge Protector", cat: "surge" },
+];
+
+function App() {
+  const [job, setJob] = useState({ jobNo: "", customer: "", address: "", city: "", zip: "", phone: "", installDate: "", notes: "" });
+  const [installers, setInstallers] = useState(["", "", "", ""]);
+  const [equip, setEquip] = useState({ brand: "", orderDate: "", delivery: "", pickup: "" });
+
+  // portable loaner units to pick up
+  const [portables, setPortables] = useState("");
+  const [portHeaters, setPortHeaters] = useState("");
+  const [portAC, setPortAC] = useState("");
+
+  const [jobType, setJobType] = useState("");
+  const [location, setLocation] = useState("");
+  const flags = jobType ? deriveFlags(jobType) : {};
+  const isAttic = /Attic/.test(location);
+
+  // venting (gas only)
+  const [vent, setVent] = useState("");      // "80" | "90"
+  const [pvcSize, setPvcSize] = useState("2");
+  const [pvcQty, setPvcQty] = useState("");
+  const [concentric, setConcentric] = useState("2");
+  const [concentricQty, setConcentricQty] = useState("1");
+
+  // ladder
+  const [atticLadder, setAtticLadder] = useState("");   // need ladder in attic?
+  const [interiorAccess, setInteriorAccess] = useState("");
+  const [extLadderNeed, setExtLadderNeed] = useState("");
+  const [extLadder, setExtLadder] = useState("");
+
+  // line set
+  const [newLineSet, setNewLineSet] = useState("");
+  const [lineSetSize, setLineSetSize] = useState(CATALOG.lineSetSizes[1]);
+
+  // gas — LP conversion kit
+  const [lpKit, setLpKit] = useState("");
+  const [lpKitModel, setLpKitModel] = useState("");
+
+  // disconnect
+  const [discIndoor, setDiscIndoor] = useState("");
+  const [discOutdoor, setDiscOutdoor] = useState("");
+
+  // electrical: brand(s) + per-item {in,out} quantities
+  const [elecBrands, setElecBrands] = useState(["", ""]);
+  const [elec, setElec] = useState({}); // { "Title|item": { b1: n, b2: n } }
+  const bumpElec = (key, side, delta) => setElec((p) => {
+    const cur = { ...(p[key] || { b1: 0, b2: 0 }) };
+    cur[side] = Math.max(0, (cur[side] || 0) + delta);
+    if (!cur.b1 && !cur.b2) { const n = { ...p }; delete n[key]; return n; }
+    return { ...p, [key]: cur };
+  });
+
+  const auto = useMemo(() => {
+    const s = autoBoxesFor(jobType);
+    if (/Gas Furnace|Furnace Only|Gas Pack/.test(jobType) && vent === "90") s.add("90% Furnace PVC Job Box");
+    return s;
+  }, [jobType, vent]);
+  const [extraBoxes, setExtraBoxes] = useState(new Set());
+
+  const [sel, setSel] = useState({});
+  const setSingle = (k, v) => setSel((p) => ({ ...p, [k]: p[k] === v ? "" : v }));
+  const setQty = (k, item, q) => setSel((p) => {
+    const cur = { ...(p[k] || {}) };
+    if (q <= 0) delete cur[item]; else cur[item] = q;
+    return { ...p, [k]: cur };
+  });
+
+  const [video, setVideo] = useState(new Set());
+  const toggleVideo = (i) => setVideo((p) => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
+
+  /* ---------------- save / load progress ---------------- */
+  const collectData = () => ({
+    _format: "job-pull-sheet-v1",
+    job, installers, equip, portables, portHeaters, portAC,
+    jobType, location, vent, pvcSize, pvcQty, concentric, concentricQty,
+    atticLadder, interiorAccess, extLadderNeed, extLadder,
+    newLineSet, lineSetSize, lpKit, lpKitModel,
+    discIndoor, discOutdoor, elecBrands, elec,
+    extraBoxes: [...extraBoxes], sel, video: [...video],
+  });
+
+  const applyData = (d) => {
+    if (!d || d._format !== "job-pull-sheet-v1") return false;
+    d.job && setJob(d.job);
+    d.installers && setInstallers(d.installers);
+    d.equip && setEquip(d.equip);
+    setPortables(d.portables || ""); setPortHeaters(d.portHeaters || ""); setPortAC(d.portAC || "");
+    setJobType(d.jobType || ""); setLocation(d.location || "");
+    setVent(d.vent || ""); setPvcSize(d.pvcSize || "2"); setPvcQty(d.pvcQty || "");
+    setConcentric(d.concentric || "2"); setConcentricQty(d.concentricQty || "1");
+    setAtticLadder(d.atticLadder || ""); setInteriorAccess(d.interiorAccess || "");
+    setExtLadderNeed(d.extLadderNeed || ""); setExtLadder(d.extLadder || "");
+    setNewLineSet(d.newLineSet || ""); setLineSetSize(d.lineSetSize || CATALOG.lineSetSizes[1]);
+    setLpKit(d.lpKit || ""); setLpKitModel(d.lpKitModel || "");
+    setDiscIndoor(d.discIndoor || ""); setDiscOutdoor(d.discOutdoor || "");
+    setElecBrands(d.elecBrands || ["", ""]); setElec(d.elec || {});
+    setExtraBoxes(new Set(d.extraBoxes || [])); setSel(d.sel || {});
+    setVideo(new Set(d.video || []));
+    return true;
+  };
+
+  // On open, if this file was saved with data baked in, load it.
+  useEffect(() => {
+    const el = document.getElementById("saved-state");
+    if (el && el.textContent.trim() && el.textContent.trim() !== "null") {
+      try { applyData(JSON.parse(el.textContent)); } catch { /* ignore */ }
+    }
+  }, []);
+
+  // Save = rebuild a clean, self-contained HTML file from the pristine
+  // source + current data (does NOT photograph the live, running page).
+  const saveProgress = () => {
+    const data = collectData();
+    const source = document.getElementById("app-source")?.textContent || "";
+    const safeData = JSON.stringify(data).replace(/</g, "\\u003c");
+    const ST = "<" + "/script>"; // avoid closing the outer page's script
+    const head =
+      '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+      "<title>Job Information & Material Pull Sheet</title>\n" +
+      '<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js">' + ST + "\n" +
+      '<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js">' + ST + "\n" +
+      '<script src="https://unpkg.com/@babel/standalone/babel.min.js">' + ST + "\n" +
+      "<style>html,body,#root{height:100%;margin:0;}</style>\n</head>\n<body>\n" +
+      '<div id="root"></div>\n<script id="saved-state" type="application/json">';
+    const mid = ST + '\n<script id="app-source" type="text/babel" data-presets="react">';
+    const tail = ST + "\n</body>\n</html>";
+    const html = head + safeData + mid + source + tail;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const tag = (job.customer || job.jobNo || "job").replace(/[^a-z0-9]+/gi, "-");
+    a.href = url;
+    a.download = `Pull-Sheet-${tag}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Load also accepts an older .json save, for convenience.
+  const loadProgress = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        if (!applyData(JSON.parse(reader.result))) alert("That file isn't a saved pull sheet.");
+      } catch { alert("Couldn't read that file."); }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  /* ---------------- pull list ---------------- */
+  const pull = useMemo(() => {
+    const g = {};
+    const add = (grp, item, qty = 1) => { (g[grp] = g[grp] || []).push({ item, qty }); };
+
+    if (jobType) {
+      // equipment description echoes the job type
+      add("Equipment", jobType);
+      if (equip.brand) add("Equipment", `Brand: ${equip.brand}`);
+    }
+
+    if (portables === "yes") {
+      if (Number(portHeaters) > 0) add("Portables", "Portable Heater", Number(portHeaters));
+      if (Number(portAC) > 0) add("Portables", "Portable A/C Unit", Number(portAC));
+    }
+
+    [...auto].forEach((b) => add("Job Boxes", b));
+    [...extraBoxes].forEach((b) => { if (!auto.has(b)) add("Job Boxes", b); });
+
+    // venting only if gas + a vent box chosen
+    if (flags.isGas) {
+      if (vent === "80") add("Venting", "B-Vent (see B-Vent job box)");
+      if (vent === "90") {
+        if (pvcQty) add("Venting", `${pvcSize}" PVC Pipe 10ft`, Number(pvcQty));
+        add("Venting", `${concentric}" Concentric Kit`, Math.max(1, Number(concentricQty) || 1));
+      }
+    }
+
+    if (flags.isGas) add("Gas", "Gas Fitting Job Box");
+    if (flags.isGas && lpKit === "yes") add("Gas", `LP Conversion Kit — Model: ${lpKitModel || "★ MODEL NEEDED"}`, 1);
+
+    if (newLineSet === "yes") add("Line Set", `Line Set ${lineSetSize}`, 1);
+
+    SECTIONS.forEach((s) => {
+      const v = sel[s.key];
+      if (s.mode === "single") { if (v) add(s.group, `${s.title}: ${v}`); }
+      else if (v) Object.entries(v).forEach(([item, qty]) => add(s.group, item === s.title ? s.title : `${s.title} ${item}`, qty));
+    });
+
+    if (discIndoor && Number(discIndoor) > 0) add("Electrical", "100A SqD Homeline Load Center — Indoor", Number(discIndoor));
+    if (discOutdoor && Number(discOutdoor) > 0) add("Electrical", "100A SqD Homeline Load Center — Outdoor", Number(discOutdoor));
+
+    elecBrands.forEach((b, i) => { if (b) add("Electrical", `Breaker Brand${elecBrands.filter(Boolean).length > 1 ? ` ${i + 1}` : ""}: ${b}`); });
+    ELEC_SECTIONS.forEach((s) =>
+      s.cat && CATALOG[s.cat].forEach((item) => {
+        const q = elec[`${s.title}|${item}`];
+        const brandSuffix = s.key === "surge"; // surge has its own brand built in
+        if (q?.b1 > 0) add("Electrical", `${s.title} ${item}` + (brandSuffix ? "" : ` — ${elecBrands[0] || "Brand 1"}`), q.b1);
+        if (q?.b2 > 0) add("Electrical", `${s.title} ${item}` + (brandSuffix ? "" : ` — ${elecBrands[1] || "Brand 2"}`), q.b2);
+      })
+    );
+
+    if (extLadderNeed === "yes" && extLadder) add("Access / Tools", extLadder, 1);
+    if (isAttic && atticLadder === "yes" && interiorAccess && /Ladder/.test(interiorAccess)) add("Access / Tools", interiorAccess, 1);
+
+    return PULL_ORDER.filter((k) => g[k]?.length).map((k) => ({ group: k, items: g[k] }));
+  }, [jobType, equip.brand, portables, portHeaters, portAC, auto, extraBoxes, flags, vent, pvcSize, pvcQty, concentric, concentricQty, lpKit, lpKitModel,
+    newLineSet, lineSetSize, sel, discIndoor, discOutdoor, elecBrands, elec, extLadderNeed, extLadder, isAttic, atticLadder, interiorAccess]);
+
+  const totalLines = pull.reduce((n, gr) => n + gr.items.length, 0);
+
+  const missing = [];
+  if (!jobType) missing.push("job type");
+  if (!location) missing.push("equipment location");
+  if (flags.isGas && !vent) missing.push("venting (80/90)");
+  if (flags.isGas && vent === "90" && !pvcQty) missing.push("PVC qty");
+  if (flags.isGas && !lpKit) missing.push("LP kit y/n");
+  if (flags.isGas && lpKit === "yes" && !lpKitModel) missing.push("LP kit model #");
+  if (isAttic && !atticLadder) missing.push("attic ladder y/n");
+  if (!extLadderNeed) missing.push("extension ladder y/n");
+  if (!newLineSet) missing.push("new line set y/n");
+
+  const grouped = useMemo(() => {
+    const out = {};
+    SECTIONS.forEach((s) => { (out[s.group] = out[s.group] || []).push(s); });
+    return out;
+  }, []);
+
+  return (
+    <div style={S.page}>
+      <style>{CSS}</style>
+      <header style={S.topbar} className="no-print">
+        <div style={S.brand}><span style={S.mark}>▲</span>JOB PLANNING &amp; MATERIAL PULL</div>
+        <span style={S.sub}>Conditional Logic Build Sheet</span>
+      </header>
+
+      <div style={S.grid} className="layout-grid">
+        {/* ============ LEFT: INPUTS ============ */}
+        <section style={S.col} className="no-print">
+
+          <Block n="1" title="Job Information">
+            <Row>
+              <Field l="Job #"><input style={S.in} value={job.jobNo} onChange={(e) => setJob({ ...job, jobNo: e.target.value })} /></Field>
+              <Field l="Install Date"><input style={S.in} type="date" value={job.installDate} onChange={(e) => setJob({ ...job, installDate: e.target.value })} /></Field>
+            </Row>
+            <Row>
+              <Field l="Customer"><input style={S.in} value={job.customer} onChange={(e) => setJob({ ...job, customer: e.target.value })} /></Field>
+              <Field l="Phone"><input style={S.in} value={job.phone} onChange={(e) => setJob({ ...job, phone: e.target.value })} /></Field>
+            </Row>
+            <Row>
+              <Field l="Address"><input style={S.in} value={job.address} onChange={(e) => setJob({ ...job, address: e.target.value })} /></Field>
+            </Row>
+            <Row>
+              <Field l="City"><input style={S.in} value={job.city} onChange={(e) => setJob({ ...job, city: e.target.value })} /></Field>
+              <Field l="Zip"><input style={S.in} value={job.zip} onChange={(e) => setJob({ ...job, zip: e.target.value })} /></Field>
+            </Row>
+            <Row>
+              {installers.map((v, i) => (
+                <Field key={i} l={`Installer ${i + 1}`}>
+                  <select style={S.in} value={v} onChange={(e) => { const n = [...installers]; n[i] = e.target.value; setInstallers(n); }}>
+                    <option value="">—</option>
+                    <optgroup label="Mechanics">{MECHANICS.map((m) => <option key={m}>{m}</option>)}</optgroup>
+                    <optgroup label="Helpers">{HELPERS.map((m) => <option key={m}>{m}</option>)}</optgroup>
+                  </select>
+                </Field>
+              ))}
+            </Row>
+            <div style={S.subBox}>
+              <Field l="Any portable heaters or portable A/C units to pick up?">
+                <Pills v={portables} set={setPortables} opts={[{ v: "yes", l: "Yes" }, { v: "no", l: "No" }]} />
+              </Field>
+              {portables === "yes" && (
+                <Row>
+                  <Field l="Portable Heaters QTY"><input style={S.in} type="number" min="0" value={portHeaters} onChange={(e) => setPortHeaters(e.target.value)} /></Field>
+                  <Field l="Portable A/C QTY"><input style={S.in} type="number" min="0" value={portAC} onChange={(e) => setPortAC(e.target.value)} /></Field>
+                </Row>
+              )}
+            </div>
+            <Field l="Job Notes"><textarea style={{ ...S.in, minHeight: 50, resize: "vertical" }} value={job.notes} onChange={(e) => setJob({ ...job, notes: e.target.value })} /></Field>
+          </Block>
+
+          <Block n="2" title="Equipment & Logistics">
+            <Row>
+              <Field l="Equipment Brand">
+                <select style={S.in} value={equip.brand} onChange={(e) => setEquip({ ...equip, brand: e.target.value })}>
+                  <option value="">—</option>{EQUIP_BRANDS.map((b) => <option key={b}>{b}</option>)}
+                </select>
+              </Field>
+              <Field l="Date Ordered"><input style={S.in} type="date" value={equip.orderDate} onChange={(e) => setEquip({ ...equip, orderDate: e.target.value })} /></Field>
+            </Row>
+            <Field l="Delivery">
+              <Pills v={equip.delivery} set={(x) => setEquip({ ...equip, delivery: x })}
+                opts={["Shop by 8am", "Job site", "At shop", "Installer pickup"]} wrap />
+            </Field>
+            {equip.delivery === "Installer pickup" && (
+              <Field l="Pickup Location">
+                <select style={S.in} value={equip.pickup} onChange={(e) => setEquip({ ...equip, pickup: e.target.value })}>
+                  <option value="">—</option>{PICKUP_LOCATIONS.map((p) => <option key={p}>{p}</option>)}
+                </select>
+              </Field>
+            )}
+          </Block>
+
+          <Block n="3" title="Job Type ▸ drives job boxes">
+            <select style={S.in} value={jobType} onChange={(e) => setJobType(e.target.value)}>
+              <option value="">— Select job type —</option>
+              {JOB_TYPES.map((t) => <option key={t}>{t}</option>)}
+            </select>
+            {jobType && (
+              <div style={S.auto}>
+                ✔ Auto-pulls: {[...auto].join(", ")}
+                {flags.isGas && <div style={S.flag}>⚑ Gas job — pick venting in step 5</div>}
+              </div>
+            )}
+          </Block>
+
+          <Block n="4" title="Equipment Location">
+            <select style={S.in} value={location} onChange={(e) => setLocation(e.target.value)}>
+              <option value="">— Select location —</option>
+              {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
+            </select>
+            {isAttic && (
+              <div style={S.subBox}>
+                <Field l="Attic install — do we need a ladder?">
+                  <Pills v={atticLadder} set={setAtticLadder} opts={[{ v: "yes", l: "Yes" }, { v: "no", l: "No" }]} />
+                </Field>
+                {atticLadder === "yes" && (
+                  <Field l="Access type / ladder size">
+                    <Pills v={interiorAccess} set={setInteriorAccess} opts={INTERIOR_ACCESS} wrap />
+                  </Field>
+                )}
+              </div>
+            )}
+          </Block>
+
+          {flags.isGas && (
+            <Block n="5" title="Venting (gas)">
+              <Pills v={vent} set={setVent} opts={[{ v: "80", l: "80% — B-Vent" }, { v: "90", l: "90% — PVC" }]} />
+              {vent === "80" && <div style={S.auto}>Add a B-Vent job box in step 7 (Metal Fab or Hart &amp; Cooley)</div>}
+              {vent === "90" && (
+                <div style={S.subBox}>
+                  <div style={S.auto}>✔ Pulls 90% Furnace PVC Job Box + add-ons</div>
+                  <Field l="PVC pipe size"><Pills v={pvcSize} set={setPvcSize} opts={["2", "3"]} suf='"' /></Field>
+                  <Field l="PVC qty (10ft sticks)"><input style={S.in} type="number" min="0" value={pvcQty} onChange={(e) => setPvcQty(e.target.value)} /></Field>
+                  <Row>
+                    <Field l="Concentric kit"><Pills v={concentric} set={setConcentric} opts={["2", "3"]} suf='"' /></Field>
+                    <Field l="Concentric QTY"><input style={S.in} type="number" min="1" value={concentricQty} onChange={(e) => setConcentricQty(e.target.value)} /></Field>
+                  </Row>
+                </div>
+              )}
+              <div style={S.subBox}>
+                <Field l="Does it need an LP Kit?">
+                  <Pills v={lpKit} set={setLpKit} opts={[{ v: "yes", l: "Yes" }, { v: "no", l: "No" }]} />
+                </Field>
+                {lpKit === "yes" && (
+                  <>
+                    <Field l="LP Kit model # (to pull / order)">
+                      <input style={S.in} value={lpKitModel} onChange={(e) => setLpKitModel(e.target.value)} placeholder="Enter model number" />
+                    </Field>
+                    <div style={S.auto}>✔ Pulls: LP Conversion Kit{lpKitModel ? ` — ${lpKitModel}` : ""}</div>
+                  </>
+                )}
+              </div>
+            </Block>
+          )}
+
+          <Block n="6" title="Line Set & Extension Ladder">
+            <Field l="Running a new line set?">
+              <Pills v={newLineSet} set={setNewLineSet} opts={[{ v: "yes", l: "Yes" }, { v: "no", l: "No" }]} />
+            </Field>
+            {newLineSet === "yes" && (
+              <Field l="Line set size">
+                <select style={S.in} value={lineSetSize} onChange={(e) => setLineSetSize(e.target.value)}>
+                  {CATALOG.lineSetSizes.map((o) => <option key={o}>{o}</option>)}
+                </select>
+              </Field>
+            )}
+            <Field l="Need an extension ladder?">
+              <Pills v={extLadderNeed} set={setExtLadderNeed} opts={[{ v: "yes", l: "Yes" }, { v: "no", l: "No" }]} />
+            </Field>
+            {extLadderNeed === "yes" && (
+              <Field l="Extension ladder size"><Pills v={extLadder} set={setExtLadder} opts={EXT_LADDERS} wrap /></Field>
+            )}
+          </Block>
+
+          <Block n="7" title="Job Boxes">
+            <div style={S.chkGrid}>
+              {CATALOG.jobBoxes.map((b) => {
+                const locked = auto.has(b);
+                const checked = locked || extraBoxes.has(b);
+                return (
+                  <label key={b} style={{ ...S.chk, opacity: locked ? 0.85 : 1 }}>
+                    <input type="checkbox" checked={checked} disabled={locked}
+                      onChange={(e) => setExtraBoxes((p) => { const n = new Set(p); e.target.checked ? n.add(b) : n.delete(b); return n; })} />
+                    {b}{locked && <span style={S.lockTag}>auto</span>}
+                  </label>
+                );
+              })}
+            </div>
+          </Block>
+
+          <Block n="8" title="Disconnect / Load Center">
+            <Row>
+              <Field l="Indoor QTY"><input style={S.in} type="number" min="0" value={discIndoor} onChange={(e) => setDiscIndoor(e.target.value)} /></Field>
+              <Field l="Outdoor QTY"><input style={S.in} type="number" min="0" value={discOutdoor} onChange={(e) => setDiscOutdoor(e.target.value)} /></Field>
+            </Row>
+          </Block>
+
+          <Block n="9" title="Electrical — Brand 1 / Brand 2">
+            <Row>
+              {elecBrands.map((v, i) => (
+                <Field key={i} l={`Breaker Brand ${i + 1}`}>
+                  <select style={S.in} value={v} onChange={(e) => { const n = [...elecBrands]; n[i] = e.target.value; setElecBrands(n); }}>
+                    <option value="">—</option>{CATALOG.breakerBrands.map((b) => <option key={b}>{b}</option>)}
+                  </select>
+                </Field>
+              ))}
+            </Row>
+            {ELEC_SECTIONS.map((s) => (
+              <div key={s.key} style={S.secWrap}>
+                <div style={S.elecHead}>
+                  <span>{s.title}</span>
+                  <span style={S.elecCols}>
+                    <span>{elecBrands[0] ? elecBrands[0].split(" ")[0] : "BR 1"}</span>
+                    <span>{elecBrands[1] ? elecBrands[1].split(" ")[0] : "BR 2"}</span>
+                  </span>
+                </div>
+                {CATALOG[s.cat].map((item) => {
+                  const q = elec[`${s.title}|${item}`] || { b1: 0, b2: 0 };
+                  const on = q.b1 || q.b2;
+                  return (
+                    <div key={item} style={{ ...S.elecRow, ...(on ? S.qtyOn : {}) }}>
+                      <span style={S.elecLbl}>{item}</span>
+                      <Stepper q={q.b1} onMinus={() => bumpElec(`${s.title}|${item}`, "b1", -1)} onPlus={() => bumpElec(`${s.title}|${item}`, "b1", 1)} />
+                      <Stepper q={q.b2} onMinus={() => bumpElec(`${s.title}|${item}`, "b2", -1)} onPlus={() => bumpElec(`${s.title}|${item}`, "b2", 1)} />
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </Block>
+
+
+          {Object.entries(grouped).map(([group, secs]) => (
+            <Block key={group} n="•" title={group} collapsible>
+              {secs.map((s) => (
+                <div key={s.key} style={S.secWrap}>
+                  <div style={S.secTitle}>{s.title}</div>
+                  {s.mode === "single"
+                    ? <Pills v={sel[s.key] || ""} set={(val) => setSingle(s.key, val)} opts={CATALOG[s.cat]} wrap />
+                    : <div style={S.qtyGrid}>{CATALOG[s.cat].map((item) => {
+                        const q = (sel[s.key] || {})[item] || 0;
+                        return (
+                          <div key={item} style={{ ...S.qtyItem, ...(q ? S.qtyOn : {}) }}>
+                            <button style={S.step} onClick={() => setQty(s.key, item, q - 1)}>−</button>
+                            <span style={S.qtyN}>{q}</span>
+                            <button style={S.step} onClick={() => setQty(s.key, item, q + 1)}>+</button>
+                            <span style={S.qtyLbl}>{item}</span>
+                          </div>);
+                      })}</div>}
+                </div>
+              ))}
+            </Block>
+          ))}
+
+          <Block n="9" title="What's Needed in Video" collapsible>
+            {Object.entries(VIDEO_CHECKLIST).map(([cat, items]) => (
+              <div key={cat} style={S.secWrap}>
+                <div style={S.secTitle}>{cat}</div>
+                <div style={S.chkGrid}>
+                  {items.map((it) => {
+                    const id = cat + "|" + it;
+                    return <label key={id} style={S.chk}><input type="checkbox" checked={video.has(id)} onChange={() => toggleVideo(id)} />{it}</label>;
+                  })}
+                </div>
+              </div>
+            ))}
+          </Block>
+        </section>
+
+        {/* ============ RIGHT: OUTPUT SHEET ============ */}
+        <section style={S.sheet} className="sheet-panel">
+          <div style={S.sheetHead}>
+            <div>
+              <div style={S.sheetTitle}>JOB INFORMATION &amp; MATERIAL PULL SHEET</div>
+              <div style={S.meta}>
+                Job #{job.jobNo || "—"} · {job.customer || "—"}<br />
+                {job.address || "—"}{job.city ? `, ${job.city}` : ""} {job.zip}<br />
+                {jobType || "no job type"} · {location || "no location"}<br />
+                Install {job.installDate || "—"} · {equip.brand || "—"} · {totalLines} line items<br />
+                Crew: {installers.filter(Boolean).join(", ") || "—"}
+              </div>
+            </div>
+            <div style={S.btnRow} className="no-print">
+              <button style={S.saveBtn} onClick={saveProgress}>💾 Save</button>
+              <label style={S.loadBtn}>📂 Load
+                <input type="file" accept="application/json,.json" onChange={loadProgress} style={{ display: "none" }} />
+              </label>
+              <button style={S.print} onClick={() => window.print()}>⎙ Print</button>
+            </div>
+          </div>
+
+          {missing.length > 0 && <div style={S.warn} className="no-print">Still needed: {missing.join(", ")}.</div>}
+
+          <div style={S.secLabel}>▣ WAREHOUSE — PULL LIST</div>
+          {pull.length === 0 && <div style={S.empty}>Pick a job type to start building the list.</div>}
+          {pull.map((g) => (
+            <div key={g.group} style={S.pg}>
+              <div style={S.pgTitle}>{g.group}</div>
+              {g.items.map((it, i) => (
+                <div key={it.item + i} style={S.pi}>
+                  <span style={S.box}>☐</span><span style={S.qtyChip}>{it.qty}</span><span>{it.item}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+
+          <div style={{ ...S.secLabel, marginTop: 18 }}>▣ INSTALLER JOB SPEC</div>
+          <div style={S.spec}>
+            <SL k="Job Type" v={jobType || "—"} />
+            <SL k="Location" v={location || "—"} />
+            <SL k="Brand" v={equip.brand || "—"} />
+            <SL k="Venting" v={!flags.isGas ? "n/a" : vent === "80" ? "80% B-Vent" : vent === "90" ? `90% PVC ${pvcSize}" ×${pvcQty || "?"} + ${concentric}" conc. ×${concentricQty || 1}` : "—"} />
+            <SL k="LP Kit" v={!flags.isGas ? "n/a" : lpKit === "yes" ? `Yes${lpKitModel ? ` — ${lpKitModel}` : " (model?)"}` : lpKit === "no" ? "No" : "—"} />
+            <SL k="Line Set" v={newLineSet === "yes" ? lineSetSize : newLineSet === "no" ? "Reuse existing" : "—"} />
+            <SL k="Attic Access" v={isAttic ? (atticLadder === "yes" ? interiorAccess || "ladder needed" : "no ladder") : "n/a"} />
+            <SL k="Ext. Ladder" v={extLadderNeed === "yes" ? extLadder || "yes" : "no"} />
+            <SL k="Thermostat" v={sel.thermostats || "—"} />
+            <SL k="Portables" v={portables !== "yes" ? "None" : (() => {
+              const parts = [];
+              if (Number(portHeaters) > 0) parts.push(`${portHeaters} Portable Heater${Number(portHeaters) > 1 ? "s" : ""}`);
+              if (Number(portAC) > 0) parts.push(`${portAC} Portable A/C${Number(portAC) > 1 ? " units" : ""}`);
+              return parts.length ? "Pick up: " + parts.join(", ") : "Yes (qty?)";
+            })()} />
+            <SL k="Delivery" v={equip.delivery ? equip.delivery + (equip.pickup ? ` (${equip.pickup})` : "") : "—"} />
+          </div>
+
+          {video.size > 0 && (
+            <>
+              <div style={{ ...S.secLabel, marginTop: 18 }}>▣ VIDEO / PHOTO CHECKLIST</div>
+              <div style={S.spec}>
+                {[...video].map((id) => {
+                  const [cat, it] = id.split("|");
+                  return <div key={id} style={S.pi}><span style={S.box}>☐</span><span style={{ color: "#9a968c", fontSize: 11 }}>{cat}</span> {it}</div>;
+                })}
+              </div>
+            </>
+          )}
+
+          {job.notes && (<><div style={{ ...S.secLabel, marginTop: 18 }}>▣ JOB NOTES</div><div style={S.notesBox}>{job.notes}</div></>)}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- components ---------- */
+const Block = ({ n, title, children, collapsible }) => {
+  const [open, setOpen] = useState(!collapsible);
+  return (
+    <div style={S.block}>
+      <div style={S.bHead} onClick={collapsible ? () => setOpen(!open) : undefined}>
+        <span style={S.bNum}>{n}</span>{title}{collapsible && <span style={S.caret}>{open ? "▾" : "▸"}</span>}
+      </div>
+      {open && children}
+    </div>
+  );
+};
+const Row = ({ children }) => <div style={S.row}>{children}</div>;
+const Stepper = ({ q, onMinus, onPlus }) => (
+  <span style={S.stepper}>
+    <button style={S.step} onClick={onMinus}>−</button>
+    <span style={S.qtyN}>{q}</span>
+    <button style={S.step} onClick={onPlus}>+</button>
+  </span>
+);
+const Field = ({ l, children }) => <label style={S.field}><span style={S.fl}>{l}</span>{children}</label>;
+const SL = ({ k, v }) => <div style={S.sl}><span style={S.slk}>{k}</span><span style={S.slv}>{v}</span></div>;
+const Pills = ({ v, set, opts, suf = "", wrap }) => (
+  <div style={S.pills}>
+    {opts.map((o) => {
+      const val = typeof o === "string" ? o : o.v;
+      const lbl = typeof o === "string" ? o + suf : o.l;
+      const on = v === val;
+      return <button key={val} onClick={() => set(val)} style={{ ...S.pill, ...(on ? S.pillOn : {}) }}>{lbl}</button>;
+    })}
+  </div>
+);
+
+/* ---------- styles ---------- */
+const ink = "#16191d", amber = "#f6a821", paper = "#fbfaf7", line = "#d8d4cc", muted = "#6b6962";
+const S = {
+  page: { fontFamily: "'Archivo',sans-serif", color: ink, background: "#eceae4", minHeight: "100%" },
+  topbar: { display: "flex", justifyContent: "space-between", alignItems: "center", background: ink, color: paper, padding: "14px 22px" },
+  brand: { fontFamily: "'Oswald',sans-serif", fontWeight: 600, letterSpacing: ".11em", fontSize: 17, display: "flex", gap: 10, alignItems: "center" },
+  mark: { color: amber }, sub: { fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#9a978f" },
+  grid: { display: "grid", gridTemplateColumns: "minmax(340px,1.15fr) minmax(300px,.85fr)", alignItems: "start" },
+  col: { padding: 20, display: "flex", flexDirection: "column", gap: 12 },
+  block: { background: paper, border: `1px solid ${line}`, borderRadius: 4, padding: "12px 14px" },
+  bHead: { fontFamily: "'Oswald',sans-serif", fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", fontSize: 13.5, display: "flex", alignItems: "center", gap: 10 },
+  bNum: { background: ink, color: amber, minWidth: 22, height: 22, borderRadius: 3, display: "grid", placeItems: "center", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" },
+  caret: { marginLeft: "auto", color: muted, cursor: "pointer" },
+  row: { display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 },
+  field: { display: "flex", flexDirection: "column", gap: 5, flex: 1, minWidth: 120, marginTop: 10 },
+  fl: { fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: muted, fontWeight: 600 },
+  in: { fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: "8px 10px", border: `1px solid ${line}`, borderRadius: 3, background: "#fff", color: ink, outline: "none", width: "100%" },
+  pills: { display: "flex", gap: 7, flexWrap: "wrap", marginTop: 8 },
+  pill: { fontFamily: "'Oswald',sans-serif", letterSpacing: ".03em", fontSize: 12.5, padding: "7px 12px", border: `1px solid ${line}`, borderRadius: 3, background: "#fff", color: ink, cursor: "pointer" },
+  pillOn: { background: ink, color: amber, borderColor: ink },
+  auto: { fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "#3a7a3a", marginTop: 8, lineHeight: 1.5 },
+  flag: { color: "#8a6a14", marginTop: 4 },
+  subBox: { marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${line}` },
+  chk: { display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontFamily: "'JetBrains Mono',monospace", marginTop: 7, cursor: "pointer" },
+  chkGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginTop: 8 },
+  lockTag: { fontSize: 9, background: amber, color: ink, padding: "1px 5px", borderRadius: 2, marginLeft: 4, fontWeight: 700 },
+  secWrap: { marginTop: 12 },
+  secTitle: { fontFamily: "'Oswald',sans-serif", fontSize: 12, textTransform: "uppercase", letterSpacing: ".06em", color: muted, borderBottom: `1px solid ${line}`, paddingBottom: 3 },
+  qtyGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginTop: 8 },
+  qtyItem: { display: "flex", alignItems: "center", gap: 5, border: `1px solid ${line}`, borderRadius: 3, padding: "3px 5px", background: "#fff" },
+  qtyOn: { borderColor: ink, background: "#fff8ec" },
+  elecHead: { display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'Oswald',sans-serif", fontSize: 12, textTransform: "uppercase", letterSpacing: ".06em", color: muted, borderBottom: `1px solid ${line}`, paddingBottom: 3, marginTop: 4 },
+  elecCols: { display: "flex", gap: 30, fontSize: 10, paddingRight: 18 },
+  elecRow: { display: "grid", gridTemplateColumns: "1fr auto auto", alignItems: "center", gap: 10, border: `1px solid ${line}`, borderRadius: 3, padding: "3px 8px", background: "#fff", marginTop: 5 },
+  elecLbl: { fontFamily: "'JetBrains Mono',monospace", fontSize: 12 },
+  stepper: { display: "flex", alignItems: "center", gap: 4 },
+  step: { width: 22, height: 22, border: `1px solid ${line}`, background: "#f3efe6", borderRadius: 3, cursor: "pointer", fontSize: 14, lineHeight: 1 },
+  qtyN: { fontFamily: "'JetBrains Mono',monospace", fontSize: 12, minWidth: 14, textAlign: "center" },
+  qtyLbl: { fontSize: 11, fontFamily: "'JetBrains Mono',monospace" },
+  sheet: { background: paper, borderLeft: `1px solid ${line}`, minHeight: "100vh", padding: 20, position: "sticky", top: 0 },
+  sheetHead: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: `3px solid ${ink}`, paddingBottom: 12, marginBottom: 14 },
+  sheetTitle: { fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 18, letterSpacing: ".03em", lineHeight: 1.15 },
+  meta: { fontFamily: "'JetBrains Mono',monospace", fontSize: 10.5, color: muted, marginTop: 4, lineHeight: 1.7 },
+  print: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "8px 14px", background: amber, border: "none", borderRadius: 3, cursor: "pointer", fontWeight: 600 },
+  btnRow: { display: "flex", gap: 7, flexShrink: 0 },
+  saveBtn: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "8px 12px", background: ink, color: paper, border: "none", borderRadius: 3, cursor: "pointer", fontWeight: 600 },
+  loadBtn: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "8px 12px", background: "#fff", color: ink, border: `1px solid ${line}`, borderRadius: 3, cursor: "pointer", fontWeight: 600, display: "inline-flex", alignItems: "center" },
+  warn: { background: "#fff3d6", border: `1px solid ${amber}`, color: "#7a5a10", fontSize: 12, padding: "8px 12px", borderRadius: 3, marginBottom: 14, fontFamily: "'JetBrains Mono',monospace" },
+  empty: { fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: muted, padding: "10px 0" },
+  secLabel: { fontFamily: "'Oswald',sans-serif", fontWeight: 600, letterSpacing: ".08em", fontSize: 13, background: ink, color: paper, padding: "6px 10px", borderRadius: 3, marginBottom: 10 },
+  pg: { marginBottom: 10 },
+  pgTitle: { fontFamily: "'Oswald',sans-serif", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "#9a968c", borderBottom: `1px solid ${line}`, paddingBottom: 3, marginBottom: 5 },
+  pi: { display: "flex", alignItems: "center", gap: 9, fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5, padding: "2px 0" },
+  box: { fontSize: 14 },
+  qtyChip: { background: "#efe9da", borderRadius: 2, padding: "0 6px", fontSize: 11, fontWeight: 700, minWidth: 16, textAlign: "center" },
+  spec: { border: `1px solid ${line}`, borderRadius: 3, overflow: "hidden" },
+  sl: { display: "flex", borderBottom: `1px solid ${line}`, fontSize: 12.5 },
+  slk: { fontFamily: "'Oswald',sans-serif", letterSpacing: ".04em", width: 100, padding: "7px 9px", background: "#f3efe6", textTransform: "uppercase", fontSize: 11 },
+  slv: { fontFamily: "'JetBrains Mono',monospace", padding: "7px 9px", flex: 1 },
+  notesBox: { border: `1px solid ${line}`, borderRadius: 3, padding: 10, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, whiteSpace: "pre-wrap" },
+};
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap');
+*{box-sizing:border-box;}
+.sl:last-child{border-bottom:none;}
+@media (max-width:760px){div[style*="grid-template-columns: minmax(340px"]{grid-template-columns:1fr !important;}div[style*="position: sticky"]{position:static !important;}}
+@media print{
+  .no-print{display:none !important;}
+  html,body{background:#fff !important;margin:0 !important;padding:0 !important;}
+  .layout-grid{display:block !important;}
+  .sheet-panel{position:static !important;min-height:0 !important;height:auto !important;border:none !important;border-left:none !important;padding:0 !important;margin:0 !important;width:100% !important;background:#fff !important;}
+  .sheet-panel > div:first-child{margin-top:0 !important;}
+  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}
+  @page{margin:0.5in;}
+}
+`;
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
