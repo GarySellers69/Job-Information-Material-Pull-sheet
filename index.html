@@ -324,20 +324,6 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
-  // Load also accepts an older .json save, for convenience.
-  const loadProgress = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        if (!applyData(JSON.parse(reader.result))) alert("That file isn't a saved pull sheet.");
-      } catch { alert("Couldn't read that file."); }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  };
-
   /* ---------------- pull list ---------------- */
   const pull = useMemo(() => {
     const g = {};
@@ -596,7 +582,7 @@ function App() {
             </Row>
           </Block>
 
-          <Block n="9" title="Electrical — Brand 1 / Brand 2">
+          <Block n="9" title="Electrical — Brand 1 / Brand 2" collapsible>
             <Row>
               {elecBrands.map((v, i) => (
                 <Field key={i} l={`Breaker Brand ${i + 1}`}>
@@ -683,9 +669,6 @@ function App() {
             </div>
             <div style={S.btnRow} className="no-print">
               <button style={S.saveBtn} onClick={saveProgress}>💾 Save</button>
-              <label style={S.loadBtn}>📂 Load
-                <input type="file" accept="application/json,.json" onChange={loadProgress} style={{ display: "none" }} />
-              </label>
               <button style={S.print} onClick={() => window.print()}>⎙ Print</button>
             </div>
           </div>
@@ -749,7 +732,7 @@ const Block = ({ n, title, children, collapsible }) => {
   const [open, setOpen] = useState(!collapsible);
   return (
     <div style={S.block}>
-      <div style={S.bHead} onClick={collapsible ? () => setOpen(!open) : undefined}>
+      <div style={{ ...S.bHead, cursor: collapsible ? "pointer" : "default" }} onClick={collapsible ? () => setOpen(!open) : undefined}>
         <span style={S.bNum}>{n}</span>{title}{collapsible && <span style={S.caret}>{open ? "▾" : "▸"}</span>}
       </div>
       {open && children}
@@ -823,7 +806,6 @@ const S = {
   print: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "8px 14px", background: amber, border: "none", borderRadius: 3, cursor: "pointer", fontWeight: 600 },
   btnRow: { display: "flex", gap: 7, flexShrink: 0 },
   saveBtn: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "8px 12px", background: ink, color: paper, border: "none", borderRadius: 3, cursor: "pointer", fontWeight: 600 },
-  loadBtn: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "8px 12px", background: "#fff", color: ink, border: `1px solid ${line}`, borderRadius: 3, cursor: "pointer", fontWeight: 600, display: "inline-flex", alignItems: "center" },
   warn: { background: "#fff3d6", border: `1px solid ${amber}`, color: "#7a5a10", fontSize: 12, padding: "8px 12px", borderRadius: 3, marginBottom: 14, fontFamily: "'JetBrains Mono',monospace" },
   empty: { fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: muted, padding: "10px 0" },
   secLabel: { fontFamily: "'Oswald',sans-serif", fontWeight: 600, letterSpacing: ".08em", fontSize: 13, background: ink, color: paper, padding: "6px 10px", borderRadius: 3, marginBottom: 10 },
