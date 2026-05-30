@@ -42,6 +42,7 @@ const JOB_TYPES = [
   "Gas Furnace Coil & Condenser Change Out & Duct System With Zone System",
   "Furnace Only Change Out & Duct System With Zone System",
   "Coil & Condenser Change Out Only & Duct System With Zone System",
+  "Modular Home Electric Furnace Coil & Condenser",
 ];
 
 const LOCATIONS = [
@@ -50,7 +51,7 @@ const LOCATIONS = [
   "Crawl Space 1st Floor", "Crawl Space 2nd Floor", "Crawl Space 3rd Floor",
   "Closet 1st Floor Upflow", "Closet 1st Floor Downflow",
   "Closet 2nd Floor Upflow", "Closet 2nd Floor Downflow",
-  "Bonus Room (Mini Split)", "Garage (Mini Split)", "Package Unit Install",
+  "Bonus Room (Mini Split)", "Garage (Mini Split)", "Package Unit Install", "In the Wall Unit",
 ];
 
 const EQUIP_BRANDS = ["Lennox", "Ruud", "MoovAir", "Mitsubishi", "Daikin", "Durastar", "Goodman", "Bosch", "Heil"];
@@ -132,8 +133,9 @@ function deriveFlags(jt) {
   const hasDuct = /Duct System/.test(jt);            // includes duct-only
   const hasZone = /Zone System/.test(jt);
   const isGas = /Gas Furnace|Furnace Only|Gas Pack/.test(jt);
+  const isGasPack = /Gas Pack/.test(jt);             // vents through its own flue — no 80/90 or PVC
   const isMiniSplit = /Mini Split/.test(jt);
-  return { isDuctOnly, hasDuct, hasZone, isGas, isMiniSplit };
+  return { isDuctOnly, hasDuct, hasZone, isGas, isGasPack, isMiniSplit };
 }
 function autoBoxesFor(jt) {
   if (!jt) return new Set();
@@ -144,6 +146,24 @@ function autoBoxesFor(jt) {
   if (f.hasDuct) s.add("Duct Material Job Box");
   if (f.hasZone) s.add("Zone System Job Box");
   return s;
+}
+
+// Which equipment pieces need a model/serial recorded by the warehouse.
+function equipmentUnitsFor(jt) {
+  if (!jt) return [];
+  if (/Duct System Only/.test(jt)) return [];
+  if (/Mini Split/.test(jt)) return ["Indoor Head Unit", "Outdoor Condenser"];
+  if (/Package Heat Pump/.test(jt)) return ["Package Unit", "Heat Strip"];
+  if (/Gas Pack/.test(jt)) return ["Package Unit"];
+  const units = [];
+  if (/Modular Home Electric Furnace/.test(jt)) { units.push("Electric Furnace", "Evaporator Coil", "Condenser"); return units; }
+  if (/Gas Furnace|Furnace Only/.test(jt)) units.push("Furnace");
+  if (/Heat Pump/.test(jt)) units.push("Air Handler");
+  if (/Coil/.test(jt) || /Gas Furnace/.test(jt)) units.push("Evaporator Coil");
+  if (/Condenser|Heat Pump/.test(jt)) units.push("Condenser");
+  if (/Heat Pump/.test(jt)) units.push("Heat Strip");
+  // Fallback for any change-out that didn't match specifics
+  return units.length ? units : ["Indoor Unit", "Outdoor Unit"];
 }
 
 const SECTIONS = [
@@ -256,6 +276,13 @@ function App() {
   const [video, setVideo] = useState(new Set());
   const toggleVideo = (i) => setVideo((p) => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
+  // Timestamp for when the pull sheet was handed to the warehouse
+  const [handoff, setHandoff] = useState("");
+  const stampHandoff = () => {
+    const d = new Date();
+    setHandoff(d.toLocaleString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
+  };
+
   /* ---------------- save / load progress ---------------- */
   const collectData = () => ({
     _format: "job-pull-sheet-v1",
@@ -264,7 +291,7 @@ function App() {
     atticLadder, interiorAccess, extLadderNeed, extLadder,
     newLineSet, lineSetSize, lpKit, lpKitModel,
     discIndoor, discOutdoor, elecBrands, elec,
-    extraBoxes: [...extraBoxes], sel, video: [...video],
+    extraBoxes: [...extraBoxes], sel, video: [...video], handoff,
   });
 
   const applyData = (d) => {
@@ -284,6 +311,7 @@ function App() {
     setElecBrands(d.elecBrands || ["", ""]); setElec(d.elec || {});
     setExtraBoxes(new Set(d.extraBoxes || [])); setSel(d.sel || {});
     setVideo(new Set(d.video || []));
+    setHandoff(d.handoff || "");
     return true;
   };
 
@@ -294,6 +322,26 @@ function App() {
       try { applyData(JSON.parse(el.textContent)); } catch { /* ignore */ }
     }
   }, []);
+
+  // Clear everything back to a fresh, blank job.
+  const resetForm = () => {
+    if (!window.confirm("Clear this sheet and start a new job? Anything not saved will be lost.")) return;
+    setJob({ jobNo: "", customer: "", address: "", city: "", zip: "", phone: "", installDate: "", notes: "" });
+    setInstallers(["", "", "", ""]);
+    setEquip({ brand: "", orderDate: "", delivery: "", pickup: "" });
+    setPortables(""); setPortHeaters(""); setPortAC("");
+    setJobType(""); setLocation("");
+    setVent(""); setPvcSize("2"); setPvcQty("");
+    setConcentric("2"); setConcentricQty("1");
+    setAtticLadder(""); setInteriorAccess(""); setExtLadderNeed(""); setExtLadder("");
+    setNewLineSet(""); setLineSetSize(CATALOG.lineSetSizes[1]);
+    setLpKit(""); setLpKitModel("");
+    setDiscIndoor(""); setDiscOutdoor("");
+    setElecBrands(["", ""]); setElec({});
+    setExtraBoxes(new Set()); setSel({}); setVideo(new Set());
+    setHandoff("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   // Save = rebuild a clean, self-contained HTML file from the pristine
   // source + current data (does NOT photograph the live, running page).
@@ -396,6 +444,34 @@ function App() {
   if (!extLadderNeed) missing.push("extension ladder y/n");
   if (!newLineSet) missing.push("new line set y/n");
 
+  // REQUIRED fields — the hard subset warned about (with override) before Save/Print.
+  // Gas Pack vents through its own flue, so 80/90 + PVC are NOT required for it.
+  const req = {
+    customer: !job.customer.trim(),
+    address: !job.address.trim(),
+    installDate: !job.installDate,
+    jobType: !jobType,
+    location: !location,
+    vent: flags.isGas && !flags.isGasPack && !vent,
+    pvcQty: flags.isGas && !flags.isGasPack && vent === "90" && !pvcQty,
+    lpKit: flags.isGas && !lpKit,
+    lpKitModel: flags.isGas && lpKit === "yes" && !lpKitModel,
+  };
+  const reqLabels = {
+    customer: "Customer", address: "Address", installDate: "Install Date",
+    jobType: "Job Type", location: "Equipment Location", vent: "Venting (80/90)",
+    pvcQty: "PVC Quantity", lpKit: "LP Kit y/n", lpKitModel: "LP Kit Model #",
+  };
+  const requiredMissing = Object.keys(req).filter((k) => req[k]).map((k) => reqLabels[k]);
+
+  const guard = (action) => {
+    if (requiredMissing.length === 0) { action(); return; }
+    if (window.confirm("Missing required fields:\n\n• " + requiredMissing.join("\n• ") + "\n\nContinue anyway?")) action();
+  };
+
+  // Merge a red outline onto an input when that required field is empty.
+  const rq = (isMissing) => (isMissing ? { ...S.in, borderColor: "#c0392b", background: "#fff4f2" } : S.in);
+
   const grouped = useMemo(() => {
     const out = {};
     SECTIONS.forEach((s) => { (out[s.group] = out[s.group] || []).push(s); });
@@ -417,14 +493,14 @@ function App() {
           <Block n="1" title="Job Information">
             <Row>
               <Field l="Job #"><input style={S.in} value={job.jobNo} onChange={(e) => setJob({ ...job, jobNo: e.target.value })} /></Field>
-              <Field l="Install Date"><input style={S.in} type="date" value={job.installDate} onChange={(e) => setJob({ ...job, installDate: e.target.value })} /></Field>
+              <Field l="Install Date"><input style={rq(req.installDate)} type="date" value={job.installDate} onChange={(e) => setJob({ ...job, installDate: e.target.value })} /></Field>
             </Row>
             <Row>
-              <Field l="Customer"><input style={S.in} value={job.customer} onChange={(e) => setJob({ ...job, customer: e.target.value })} /></Field>
+              <Field l="Customer"><input style={rq(req.customer)} value={job.customer} onChange={(e) => setJob({ ...job, customer: e.target.value })} /></Field>
               <Field l="Phone"><input style={S.in} value={job.phone} onChange={(e) => setJob({ ...job, phone: e.target.value })} /></Field>
             </Row>
             <Row>
-              <Field l="Address"><input style={S.in} value={job.address} onChange={(e) => setJob({ ...job, address: e.target.value })} /></Field>
+              <Field l="Address"><input style={rq(req.address)} value={job.address} onChange={(e) => setJob({ ...job, address: e.target.value })} /></Field>
             </Row>
             <Row>
               <Field l="City"><input style={S.in} value={job.city} onChange={(e) => setJob({ ...job, city: e.target.value })} /></Field>
@@ -478,7 +554,7 @@ function App() {
           </Block>
 
           <Block n="3" title="Job Type ▸ drives job boxes">
-            <select style={S.in} value={jobType} onChange={(e) => setJobType(e.target.value)}>
+            <select style={rq(req.jobType)} value={jobType} onChange={(e) => setJobType(e.target.value)}>
               <option value="">— Select job type —</option>
               {JOB_TYPES.map((t) => <option key={t}>{t}</option>)}
             </select>
@@ -491,7 +567,7 @@ function App() {
           </Block>
 
           <Block n="4" title="Equipment Location">
-            <select style={S.in} value={location} onChange={(e) => setLocation(e.target.value)}>
+            <select style={rq(req.location)} value={location} onChange={(e) => setLocation(e.target.value)}>
               <option value="">— Select location —</option>
               {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
             </select>
@@ -511,13 +587,15 @@ function App() {
 
           {flags.isGas && (
             <Block n="5" title="Venting (gas)">
+              {flags.isGasPack && <div style={S.auto}>Gas Pack vents through its own flue — 80/90 &amp; PVC not required.</div>}
               <Pills v={vent} set={setVent} opts={[{ v: "80", l: "80% — B-Vent" }, { v: "90", l: "90% — PVC" }]} />
+              {req.vent && <div style={S.reqHint}>● Required</div>}
               {vent === "80" && <div style={S.auto}>Add a B-Vent job box in step 7 (Metal Fab or Hart &amp; Cooley)</div>}
               {vent === "90" && (
                 <div style={S.subBox}>
                   <div style={S.auto}>✔ Pulls 90% Furnace PVC Job Box + add-ons</div>
                   <Field l="PVC pipe size"><Pills v={pvcSize} set={setPvcSize} opts={["2", "3"]} suf='"' /></Field>
-                  <Field l="PVC qty (10ft sticks)"><input style={S.in} type="number" min="0" value={pvcQty} onChange={(e) => setPvcQty(e.target.value)} /></Field>
+                  <Field l="PVC qty (10ft sticks)"><input style={rq(req.pvcQty)} type="number" min="0" value={pvcQty} onChange={(e) => setPvcQty(e.target.value)} /></Field>
                   <Row>
                     <Field l="Concentric kit"><Pills v={concentric} set={setConcentric} opts={["2", "3"]} suf='"' /></Field>
                     <Field l="Concentric QTY"><input style={S.in} type="number" min="1" value={concentricQty} onChange={(e) => setConcentricQty(e.target.value)} /></Field>
@@ -528,10 +606,11 @@ function App() {
                 <Field l="Does it need an LP Kit?">
                   <Pills v={lpKit} set={setLpKit} opts={[{ v: "yes", l: "Yes" }, { v: "no", l: "No" }]} />
                 </Field>
+                {req.lpKit && <div style={S.reqHint}>● Required</div>}
                 {lpKit === "yes" && (
                   <>
                     <Field l="LP Kit model # (to pull / order)">
-                      <input style={S.in} value={lpKitModel} onChange={(e) => setLpKitModel(e.target.value)} placeholder="Enter model number" />
+                      <input style={rq(req.lpKitModel)} value={lpKitModel} onChange={(e) => setLpKitModel(e.target.value)} placeholder="Enter model number" />
                     </Field>
                     <div style={S.auto}>✔ Pulls: LP Conversion Kit{lpKitModel ? ` — ${lpKitModel}` : ""}</div>
                   </>
@@ -652,6 +731,16 @@ function App() {
               </div>
             ))}
           </Block>
+
+          <Block n="10" title="Handed to Warehouse">
+            <Row>
+              <button style={S.stampBtn} onClick={stampHandoff}>🕒 Stamp now</button>
+              {handoff && <button style={S.clearStamp} onClick={() => setHandoff("")}>Clear</button>}
+            </Row>
+            {handoff
+              ? <div style={S.stampShown}>Handed over: {handoff}</div>
+              : <div style={S.note}>Tap when you hand the sheet to the warehouse.</div>}
+          </Block>
         </section>
 
         {/* ============ RIGHT: OUTPUT SHEET ============ */}
@@ -665,11 +754,13 @@ function App() {
                 {jobType || "no job type"} · {location || "no location"}<br />
                 Install {job.installDate || "—"} · {equip.brand || "—"} · {totalLines} line items<br />
                 Crew: {installers.filter(Boolean).join(", ") || "—"}
+                {handoff && <><br /><span style={S.handoffStamp}>🕒 Handed to warehouse: {handoff}</span></>}
               </div>
             </div>
             <div style={S.btnRow} className="no-print">
-              <button style={S.saveBtn} onClick={saveProgress}>💾 Save</button>
-              <button style={S.print} onClick={() => window.print()}>⎙ Print</button>
+              <button style={S.clearBtn} onClick={resetForm}>✕ Clear</button>
+              <button style={S.saveBtn} onClick={() => guard(saveProgress)}>💾 Save</button>
+              <button style={S.print} onClick={() => guard(() => window.print())}>⎙ Print</button>
             </div>
           </div>
 
@@ -685,6 +776,22 @@ function App() {
                   <span style={S.box}>☐</span><span style={S.qtyChip}>{it.qty}</span><span>{it.item}</span>
                 </div>
               ))}
+            </div>
+          ))}
+
+          <div style={{ ...S.secLabel, marginTop: 18 }}>▣ WAREHOUSE — RECORD MODEL &amp; SERIAL #</div>
+          <div style={S.msNote}>Write the model &amp; serial for each unit below, OR peel the sticker from the equipment and place it in the box.</div>
+          {equipmentUnitsFor(jobType).length === 0 && <div style={S.empty}>Pick a job type to list the equipment.</div>}
+          {equipmentUnitsFor(jobType).map((unit) => (
+            <div key={unit} style={S.msUnit} className="ms-unit">
+              <div style={S.msUnitName}>{unit}</div>
+              <div style={S.msRow}>
+                <div style={S.msLines}>
+                  <div style={S.msLine}><span style={S.msLbl}>Model #</span><span style={S.msWrite}></span></div>
+                  <div style={S.msLine}><span style={S.msLbl}>Serial #</span><span style={S.msWrite}></span></div>
+                </div>
+                <div style={S.msSticker}>Place sticker here</div>
+              </div>
             </div>
           ))}
 
@@ -781,6 +888,20 @@ const S = {
   pill: { fontFamily: "'Oswald',sans-serif", letterSpacing: ".03em", fontSize: 12.5, padding: "7px 12px", border: `1px solid ${line}`, borderRadius: 3, background: "#fff", color: ink, cursor: "pointer" },
   pillOn: { background: ink, color: amber, borderColor: ink },
   auto: { fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "#3a7a3a", marginTop: 8, lineHeight: 1.5 },
+  reqHint: { fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#c0392b", marginTop: 6, fontWeight: 700 },
+  stampBtn: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "9px 16px", background: ink, color: amber, border: "none", borderRadius: 3, cursor: "pointer", fontWeight: 600, marginTop: 10 },
+  clearStamp: { fontFamily: "'Oswald',sans-serif", fontSize: 12, padding: "9px 12px", background: "#fff", color: ink, border: `1px solid ${line}`, borderRadius: 3, cursor: "pointer", marginTop: 10, marginLeft: 8 },
+  stampShown: { fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: "#3a7a3a", marginTop: 10, fontWeight: 700 },
+  handoffStamp: { color: "#1a5c1a", fontWeight: 700 },
+  msNote: { fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: muted, marginBottom: 10, lineHeight: 1.5 },
+  msUnit: { border: `1px solid ${line}`, borderRadius: 4, padding: "10px 12px", marginBottom: 10 },
+  msUnitName: { fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 },
+  msRow: { display: "flex", gap: 12, alignItems: "stretch" },
+  msLines: { flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 14 },
+  msLine: { display: "flex", alignItems: "flex-end", gap: 8 },
+  msLbl: { fontFamily: "'Oswald',sans-serif", fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em", color: muted, minWidth: 62 },
+  msWrite: { flex: 1, borderBottom: `1px solid ${ink}`, height: 18 },
+  msSticker: { width: 150, minHeight: 80, border: `2px dashed ${line}`, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#9a968c", padding: 6 },
   flag: { color: "#8a6a14", marginTop: 4 },
   subBox: { marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${line}` },
   chk: { display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontFamily: "'JetBrains Mono',monospace", marginTop: 7, cursor: "pointer" },
@@ -806,6 +927,7 @@ const S = {
   print: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "8px 14px", background: amber, border: "none", borderRadius: 3, cursor: "pointer", fontWeight: 600 },
   btnRow: { display: "flex", gap: 7, flexShrink: 0 },
   saveBtn: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "8px 12px", background: ink, color: paper, border: "none", borderRadius: 3, cursor: "pointer", fontWeight: 600 },
+  clearBtn: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "8px 12px", background: "#fff", color: "#8a2020", border: "1px solid #d8a0a0", borderRadius: 3, cursor: "pointer", fontWeight: 600 },
   warn: { background: "#fff3d6", border: `1px solid ${amber}`, color: "#7a5a10", fontSize: 12, padding: "8px 12px", borderRadius: 3, marginBottom: 14, fontFamily: "'JetBrains Mono',monospace" },
   empty: { fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: muted, padding: "10px 0" },
   secLabel: { fontFamily: "'Oswald',sans-serif", fontWeight: 600, letterSpacing: ".08em", fontSize: 13, background: ink, color: paper, padding: "6px 10px", borderRadius: 3, marginBottom: 10 },
@@ -833,6 +955,7 @@ const CSS = `
   .sheet-panel{position:static !important;min-height:0 !important;height:auto !important;border:none !important;border-left:none !important;padding:0 !important;margin:0 !important;width:100% !important;background:#fff !important;}
   .sheet-panel > div:first-child{margin-top:0 !important;}
   *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}
+  .ms-unit{break-inside:avoid;page-break-inside:avoid;}
   @page{margin:0.5in;}
 }
 `;
