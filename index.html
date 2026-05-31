@@ -25,6 +25,7 @@ const JOB_TYPES = [
   "Furnace Only Change Out",
   "Coil & Condenser Change Out Only",
   "Gas Pack Change Out",
+  "Gas Pack Change Out & Duct System",
   "Package Heat Pump Change Out",
   "Mini Split Install New",
   "Mini Split Change Out",
@@ -58,7 +59,7 @@ const EQUIP_BRANDS = ["Lennox", "Ruud", "MoovAir", "Mitsubishi", "Daikin", "Dura
 const PICKUP_LOCATIONS = [
   "Lennox Morrisville", "Lennox Knightdale", "Ferguson Holly Springs", "Ferguson Apex",
   "Ferguson Durham", "Ferguson Garner", "Ferguson Aberdeen",
-  "Ferguson Raleigh Yankers Rd", "Ferguson Raleigh Rogers Ln",
+  "Ferguson Raleigh Yankers Rd", "Ferguson Raleigh Rogers Ln", "Ferguson Fayetteville Winslow St.",
 ];
 const MECHANICS = ["Travis Lloyd", "Jeremy Paul", "Shawn Cox", "Elijah Thomas", "John Austin",
   "Aiden Hillard", "Chris Archer", "Tyrell McCray", "Justin Moxley", "Demarqus Moore", "Hesham Gamaan"];
@@ -74,14 +75,14 @@ const CATALOG = {
     "90% Furnace PVC Job Box", "B-Vent Metal Fab Job Box", "B-Vent Hart & Cooley Job Box",
     "Duct Material Job Box", "Zone System Job Box"],
   thermostats: ["ECONET RETST800SYS", "Honeywell THT2320WF4010", "Honeywell THT2320U4006",
-    "Honeywell THT1320U4002", "HW Elite PRO YTHX1200WS", "Honeywell TH8320R1003", "LENNOX S40 Touchscreen", "ECONET RUUD"],
-  zoneControls: ["HARMONY 3 LENNOX LZSV", "ECONET RUUD"],
+    "Honeywell THT1320U4002", "HW Elite PRO YTHX1200WS", "Honeywell TH8320R1003", "LENNOX S40 Touchscreen"],
+  zoneControls: ["HARMONY 3 LENNOX LZSV", "ECONET RUUD REPNL700ZON"],
   zoneDampers: ['10"', '12"', '14"', '16"', '18"'],
   drainPans: ["22 x 6 x 8 Rail", "30 x 36", "30 x 60", "32 x 72"],
   equipmentPads: ["24 x 48 x 3", "36 x 36 x 3", "40 x 40 x 3", "45 x 58 x 3", "52 x 52 x 3", "56 x 58 x 3"],
   lineSetSizes: ['3/8" x 3/4" 35FT', '3/8" x 3/4" 50FT', '3/8" x 7/8" 30FT', '3/8" x 7/8" 50FT'],
   lineSetFittings: ["Line Set Cover", "Eve Penetration", "Sidewall Penetration", "End Piece", "Elbow", "Coupling"],
-  supplyGrills: ["4 x 10", "4 x 12", "4 x 14", "6 x 10", "6 x 12", "2 x 10", "2 x 12", "2 x 14", "Floor Grill", "Ceiling Grill"],
+  supplyGrills: ["4 x 10", "4 x 12", "4 x 14", "6 x 10", "6 x 12", "2 x 10", "2 x 12", "2 x 14"],
   filterGrills: ["12 x 12 x 1", "14 x 20 x 1", "14 x 25 x 1", "16 x 20 x 1", "16 x 25 x 1", "20 x 20 x 1", "20 x 25 x 1"],
   filters: ["12 x 12 x 1", "14 x 20 x 1", "14 x 25 x 1", "16 x 20 x 1", "16 x 25 x 1", "20 x 20 x 1", "20 x 25 x 1"],
   flexReturn: ['6" R8', '8" R8', '10" R8', '12" R8', '14" R8', '16" R8', '18" R8'],
@@ -93,13 +94,17 @@ const CATALOG = {
   tee: ["12 x 12 x 12", "14 x 14 x 14", "16 x 16 x 16", "18 x 18 x 18"],
   elbow: ['6"', '8"', '10"', '12"', '14"', '16"', '18"'],
   endCap: ['6"', '8"', '10"', '12"', '14"', '16"'],
-  reducer: ['4" x 6"', '6" x 8"', '10" x 12"', '10" x 14"', '10" x 16"', '12" x 14"', '12" x 16"', '14" x 16"', '16" x 18"'],
+  reducer: ['4" x 6"', '6" x 8"', '10" x 12"', '10" x 14"', '10" x 16"', '12" x 14"', '12" x 16"', '14" x 16"', '14" x 18"', '16" x 18"'],
   saddleCollar: ['6"', '8"', '10"', '12"', '14"'],
   aCollar: ['4"', '6"', '8"', '10"', '12"', '14"', '16"', '18"'],
   supplyBox: ["16 x 20 x 24", "16 x 20 x 48"],
   returnBox: ["16 x 20 x 24", "16 x 20 x 48", "19 x 20 x 24", "16 x 26 x 24"],
   sheetMetal: ['48" x 96" 26ga Flat Metal', "S Cleat 10'", "Standing Lock 10'"],
   ductWrapCat: ["Duct Wrap"],
+  bootSizes: ["4 x 10 x 8", "4 x 10 x 6", "4 x 12 x 8", "4 x 12 x 6", "4 x 14 x 8", "4 x 14 x 6",
+    "2 x 10 x 8", "2 x 10 x 6", "2 x 12 x 8", "2 x 12 x 6", "2 x 14 x 8", "2 x 14 x 6",
+    "6 x 10 x 8", "6 x 10 x 6"],
+  plasterFrame: ['10" x 4"', '12" x 4"', '10" x 6"', '12" x 6"'],
   breakerBrands: ["Square D Homeline", "Square D QO", "GE", "Eaton Black", "Cutler Hammer Brown Handle", "Siemens"],
   breakerDouble: ["15 Amp", "20 Amp", "25 Amp", "30 Amp", "35 Amp", "40 Amp", "45 Amp", "50 Amp", "60 Amp"],
   breakerSingle: ["15 Amp", "20 Amp"],
@@ -167,34 +172,35 @@ function equipmentUnitsFor(jt) {
 }
 
 const SECTIONS = [
-  { key: "thermostats", title: "Thermostat", cat: "thermostats", mode: "single", group: "Controls" },
-  { key: "zoneControls", title: "Zone Control", cat: "zoneControls", mode: "single", group: "Controls" },
-  { key: "zoneDampers", title: "Zone Damper", cat: "zoneDampers", mode: "multi", group: "Controls" },
-  { key: "drainPans", title: "Drain Pan", cat: "drainPans", mode: "single", group: "Equipment Support" },
-  { key: "equipmentPads", title: "Equipment Pad", cat: "equipmentPads", mode: "single", group: "Equipment Support" },
-  { key: "filters", title: "Filter", cat: "filters", mode: "multi", group: "Air Distribution" },
-  { key: "filterGrills", title: "Filter Grill", cat: "filterGrills", mode: "multi", group: "Air Distribution" },
-  { key: "supplyGrills", title: "Supply Grill", cat: "supplyGrills", mode: "multi", group: "Air Distribution" },
+  { key: "thermostats", title: "Thermostat", cat: "thermostats", mode: "multi", group: "Controls", special: true },
+  { key: "drainPans", title: "Drain Pan", cat: "drainPans", mode: "multi", group: "Equipment Support", special: true },
+  { key: "equipmentPads", title: "Equipment Pad", cat: "equipmentPads", mode: "multi", group: "Equipment Support", special: true },
+  { key: "filters", title: "Filter", cat: "filters", mode: "multi", group: "Air Distribution", special: true },
+  { key: "filterGrills", title: "Filter Grill", cat: "filterGrills", mode: "multi", group: "Air Distribution", special: true },
   { key: "flexSupply", title: "Flex Supply", cat: "flexSupply", mode: "multi", group: "Air Distribution" },
   { key: "flexReturn", title: "Flex Return", cat: "flexReturn", mode: "multi", group: "Air Distribution" },
-  { key: "roundDuct", title: "Round Duct", cat: "roundDuct", mode: "multi", group: "Ductwork" },
-  { key: "squareToRound", title: "Square to Round", cat: "squareToRound", mode: "multi", group: "Ductwork" },
-  { key: "supplyBox", title: "Supply Box", cat: "supplyBox", mode: "multi", group: "Ductwork" },
-  { key: "returnBox", title: "Return Box", cat: "returnBox", mode: "multi", group: "Ductwork" },
+  { key: "roundDuct", title: "Round Duct", cat: "roundDuct", mode: "multi", group: "Ductwork", special: true },
+  { key: "squareToRound", title: "Square to Round", cat: "squareToRound", mode: "multi", group: "Ductwork", special: true },
+  { key: "supplyBox", title: "Supply Box", cat: "supplyBox", mode: "multi", group: "Ductwork", special: true },
+  { key: "returnBox", title: "Return Box", cat: "returnBox", mode: "multi", group: "Ductwork", special: true },
   { key: "sheetMetal", title: "Sheet Metal", cat: "sheetMetal", mode: "multi", group: "Ductwork" },
   { key: "ductWrap", title: "Duct Wrap", cat: "ductWrapCat", mode: "multi", group: "Ductwork" },
-  { key: "wye", title: "Wye", cat: "wye", mode: "multi", group: "Fittings" },
-  { key: "tee", title: "Tee", cat: "tee", mode: "multi", group: "Fittings" },
-  { key: "elbow", title: "Elbow", cat: "elbow", mode: "multi", group: "Fittings" },
-  { key: "reducer", title: "Reducer", cat: "reducer", mode: "multi", group: "Fittings" },
+  { key: "straightBoot", title: "Straight Boot", cat: "bootSizes", mode: "multi", group: "Ductwork", special: true },
+  { key: "endBoot", title: "End Boot", cat: "bootSizes", mode: "multi", group: "Ductwork", special: true },
+  { key: "ninetyBoot", title: "90 Boot", cat: "bootSizes", mode: "multi", group: "Ductwork", special: true },
+  { key: "plasterFrame", title: "Boot (Plaster) Frame", cat: "plasterFrame", mode: "multi", group: "Ductwork", special: true },
+  { key: "wye", title: "Wye", cat: "wye", mode: "multi", group: "Fittings", special: true },
+  { key: "tee", title: "Tee", cat: "tee", mode: "multi", group: "Fittings", special: true },
+  { key: "elbow", title: "Elbow", cat: "elbow", mode: "multi", group: "Fittings", special: true },
+  { key: "reducer", title: "Reducer", cat: "reducer", mode: "multi", group: "Fittings", special: true },
   { key: "endCap", title: "End Cap", cat: "endCap", mode: "multi", group: "Fittings" },
   { key: "saddleCollar", title: "Saddle Collar", cat: "saddleCollar", mode: "multi", group: "Fittings" },
   { key: "aCollar", title: "A Collar", cat: "aCollar", mode: "multi", group: "Fittings" },
-  { key: "iaq", title: "IAQ", cat: "iaq", mode: "multi", group: "Air Quality" },
-  { key: "mediaCleaner", title: "Media Air Cleaner", cat: "mediaCleaner", mode: "single", group: "Air Quality" },
+  { key: "iaq", title: "IAQ", cat: "iaq", mode: "multi", group: "Air Quality", special: true },
+  { key: "mediaCleaner", title: "Media Air Cleaner", cat: "mediaCleaner", mode: "multi", group: "Air Quality", special: true },
   { key: "lineSetFittings", title: "Line Set Cover & Fittings", cat: "lineSetFittings", mode: "multi", group: "Line Set" },
-  { key: "misc", title: "Misc Material", cat: "misc", mode: "multi", group: "Misc" },
-  { key: "block", title: "Block / Brick", cat: "block", mode: "multi", group: "Misc" },
+  { key: "misc", title: "Misc Material", cat: "misc", mode: "multi", group: "Misc", special: true },
+  { key: "block", title: "Block / Brick", cat: "block", mode: "multi", group: "Misc", special: true },
 ];
 
 const PULL_ORDER = ["Equipment", "Portables", "Job Boxes", "Venting", "Gas", "Line Set", "Controls", "Equipment Support",
@@ -258,14 +264,38 @@ function App() {
     return { ...p, [key]: cur };
   });
 
+  // Supply grills: per size, separate Floor and Ceiling quantities
+  const [supplyG, setSupplyG] = useState({}); // { size: { floor: n, ceiling: n } }
+  const bumpSupplyG = (size, side, delta) => setSupplyG((p) => {
+    const cur = { ...(p[size] || { floor: 0, ceiling: 0 }) };
+    cur[side] = Math.max(0, (cur[side] || 0) + delta);
+    if (!cur.floor && !cur.ceiling) { const n = { ...p }; delete n[size]; return n; }
+    return { ...p, [size]: cur };
+  });
+  const [supplyGSpecial, setSupplyGSpecial] = useState(["", ""]);
+
   const auto = useMemo(() => {
     const s = autoBoxesFor(jobType);
     if (/Gas Furnace|Furnace Only|Gas Pack/.test(jobType) && vent === "90") s.add("90% Furnace PVC Job Box");
     return s;
   }, [jobType, vent]);
   const [extraBoxes, setExtraBoxes] = useState(new Set());
+  // Zone workflow is active when the Zone System Job Box is pulled (auto or manually checked)
+  const zoneActive = auto.has("Zone System Job Box") || extraBoxes.has("Zone System Job Box");
+  // Duct Material Job Box active (auto or manually checked) → auto-adds 1 Duct Wrap
+  const ductBoxActive = auto.has("Duct Material Job Box") || extraBoxes.has("Duct Material Job Box");
+  const [zoneControl, setZoneControl] = useState("");
+  const [zoneDampers, setZoneDampers] = useState({}); // { size: qty }
+  const [damperModel, setDamperModel] = useState("");
+  const setDamperQty = (size, q) => setZoneDampers((p) => {
+    const cur = { ...p };
+    if (q <= 0) delete cur[size]; else cur[size] = q;
+    return cur;
+  });
 
   const [sel, setSel] = useState({});
+  // free-text special sizes for boot sections, keyed by section key
+  const [special, setSpecial] = useState({});
   const setSingle = (k, v) => setSel((p) => ({ ...p, [k]: p[k] === v ? "" : v }));
   const setQty = (k, item, q) => setSel((p) => {
     const cur = { ...(p[k] || {}) };
@@ -291,7 +321,7 @@ function App() {
     atticLadder, interiorAccess, extLadderNeed, extLadder,
     newLineSet, lineSetSize, lpKit, lpKitModel,
     discIndoor, discOutdoor, elecBrands, elec,
-    extraBoxes: [...extraBoxes], sel, video: [...video], handoff,
+    extraBoxes: [...extraBoxes], sel, special, supplyG, supplyGSpecial, zoneControl, zoneDampers, damperModel, video: [...video], handoff,
   });
 
   const applyData = (d) => {
@@ -310,6 +340,10 @@ function App() {
     setDiscIndoor(d.discIndoor || ""); setDiscOutdoor(d.discOutdoor || "");
     setElecBrands(d.elecBrands || ["", ""]); setElec(d.elec || {});
     setExtraBoxes(new Set(d.extraBoxes || [])); setSel(d.sel || {});
+    setSpecial(d.special || {});
+    setSupplyG(d.supplyG || {}); setSupplyGSpecial(d.supplyGSpecial || ["", ""]);
+    setZoneControl(d.zoneControl || ""); setZoneDampers(d.zoneDampers || {});
+    setDamperModel(d.damperModel || "");
     setVideo(new Set(d.video || []));
     setHandoff(d.handoff || "");
     return true;
@@ -322,6 +356,28 @@ function App() {
       try { applyData(JSON.parse(el.textContent)); } catch { /* ignore */ }
     }
   }, []);
+
+  // When the Duct Material Job Box becomes active, default Duct Wrap to qty 1
+  // (only on the transition into active; user can still change or zero it after).
+  const [ductDefaulted, setDuctDefaulted] = useState(false);
+  useEffect(() => {
+    if (ductBoxActive && !ductDefaulted) {
+      setSel((p) => {
+        const cur = { ...(p.ductWrap || {}) };
+        if (!cur["Duct Wrap"]) cur["Duct Wrap"] = 1;
+        return { ...p, ductWrap: cur };
+      });
+      setDuctDefaulted(true);
+    } else if (!ductBoxActive && ductDefaulted) {
+      setDuctDefaulted(false); // reset so it re-applies if the box is turned on again
+    }
+  }, [ductBoxActive, ductDefaulted]);
+
+  // Zone control auto-pairs with its matching damper model (override still allowed).
+  useEffect(() => {
+    if (zoneControl.startsWith("ECONET RUUD")) setDamperModel("EWC Model # EURD");
+    else if (zoneControl.startsWith("HARMONY 3")) setDamperModel("Honeywell Model # HARD");
+  }, [zoneControl]);
 
   // Clear everything back to a fresh, blank job.
   const resetForm = () => {
@@ -338,7 +394,9 @@ function App() {
     setLpKit(""); setLpKitModel("");
     setDiscIndoor(""); setDiscOutdoor("");
     setElecBrands(["", ""]); setElec({});
-    setExtraBoxes(new Set()); setSel({}); setVideo(new Set());
+    setExtraBoxes(new Set()); setSel({}); setSpecial({}); setVideo(new Set());
+    setSupplyG({}); setSupplyGSpecial(["", ""]);
+    setZoneControl(""); setZoneDampers({}); setDamperModel("");
     setHandoff("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -391,6 +449,12 @@ function App() {
     [...auto].forEach((b) => add("Job Boxes", b));
     [...extraBoxes].forEach((b) => { if (!auto.has(b)) add("Job Boxes", b); });
 
+    if (zoneActive) {
+      if (zoneControl) add("Controls", `Zone Control: ${zoneControl}`);
+      if (damperModel) add("Controls", `Damper Model: ${damperModel}`);
+      Object.entries(zoneDampers).forEach(([size, q]) => add("Controls", `Zone Damper ${size}`, q));
+    }
+
     // venting only if gas + a vent box chosen
     if (flags.isGas) {
       if (vent === "80") add("Venting", "B-Vent (see B-Vent job box)");
@@ -409,10 +473,18 @@ function App() {
       const v = sel[s.key];
       if (s.mode === "single") { if (v) add(s.group, `${s.title}: ${v}`); }
       else if (v) Object.entries(v).forEach(([item, qty]) => add(s.group, item === s.title ? s.title : `${s.title} ${item}`, qty));
+      if (s.special) (special[s.key] || []).forEach((txt) => { if (txt?.trim()) add(s.group, `${s.title} — Special ${s.key === "thermostats" ? "model" : "size"}: ${txt.trim()}`, 1); });
     });
 
-    if (discIndoor && Number(discIndoor) > 0) add("Electrical", "100A SqD Homeline Load Center — Indoor", Number(discIndoor));
-    if (discOutdoor && Number(discOutdoor) > 0) add("Electrical", "100A SqD Homeline Load Center — Outdoor", Number(discOutdoor));
+    // Supply grills with Floor / Ceiling split
+    Object.entries(supplyG).forEach(([size, qs]) => {
+      if (qs.floor > 0) add("Air Distribution", `Supply Grill ${size} — Floor`, qs.floor);
+      if (qs.ceiling > 0) add("Air Distribution", `Supply Grill ${size} — Ceiling`, qs.ceiling);
+    });
+    supplyGSpecial.forEach((txt) => { if (txt?.trim()) add("Air Distribution", `Supply Grill — Special size: ${txt.trim()}`, 1); });
+
+    if (discIndoor && Number(discIndoor) > 0) add("Electrical", "100 Amp Square D Homeline 6 Spaces 12 Circuit Main Lug Load Center — Indoor", Number(discIndoor));
+    if (discOutdoor && Number(discOutdoor) > 0) add("Electrical", "100 Amp Square D Homeline 6 Spaces 12 Circuit Main Lug Load Center — Outdoor", Number(discOutdoor));
 
     elecBrands.forEach((b, i) => { if (b) add("Electrical", `Breaker Brand${elecBrands.filter(Boolean).length > 1 ? ` ${i + 1}` : ""}: ${b}`); });
     ELEC_SECTIONS.forEach((s) =>
@@ -429,7 +501,7 @@ function App() {
 
     return PULL_ORDER.filter((k) => g[k]?.length).map((k) => ({ group: k, items: g[k] }));
   }, [jobType, equip.brand, portables, portHeaters, portAC, auto, extraBoxes, flags, vent, pvcSize, pvcQty, concentric, concentricQty, lpKit, lpKitModel,
-    newLineSet, lineSetSize, sel, discIndoor, discOutdoor, elecBrands, elec, extLadderNeed, extLadder, isAttic, atticLadder, interiorAccess]);
+    newLineSet, lineSetSize, sel, special, supplyG, supplyGSpecial, zoneActive, zoneControl, zoneDampers, damperModel, discIndoor, discOutdoor, elecBrands, elec, extLadderNeed, extLadder, isAttic, atticLadder, interiorAccess]);
 
   const totalLines = pull.reduce((n, gr) => n + gr.items.length, 0);
 
@@ -509,11 +581,10 @@ function App() {
             <Row>
               {installers.map((v, i) => (
                 <Field key={i} l={`Installer ${i + 1}`}>
-                  <select style={S.in} value={v} onChange={(e) => { const n = [...installers]; n[i] = e.target.value; setInstallers(n); }}>
-                    <option value="">—</option>
-                    <optgroup label="Mechanics">{MECHANICS.map((m) => <option key={m}>{m}</option>)}</optgroup>
-                    <optgroup label="Helpers">{HELPERS.map((m) => <option key={m}>{m}</option>)}</optgroup>
-                  </select>
+                  <SelectOther value={v}
+                    onChange={(val) => { const n = [...installers]; n[i] = val; setInstallers(n); }}
+                    options={ALL_INSTALLERS}
+                    groups={[{ label: "Mechanics", items: MECHANICS }, { label: "Helpers", items: HELPERS }]} />
                 </Field>
               ))}
             </Row>
@@ -534,9 +605,7 @@ function App() {
           <Block n="2" title="Equipment & Logistics">
             <Row>
               <Field l="Equipment Brand">
-                <select style={S.in} value={equip.brand} onChange={(e) => setEquip({ ...equip, brand: e.target.value })}>
-                  <option value="">—</option>{EQUIP_BRANDS.map((b) => <option key={b}>{b}</option>)}
-                </select>
+                <SelectOther value={equip.brand} onChange={(v) => setEquip({ ...equip, brand: v })} options={EQUIP_BRANDS} />
               </Field>
               <Field l="Date Ordered"><input style={S.in} type="date" value={equip.orderDate} onChange={(e) => setEquip({ ...equip, orderDate: e.target.value })} /></Field>
             </Row>
@@ -546,9 +615,7 @@ function App() {
             </Field>
             {equip.delivery === "Installer pickup" && (
               <Field l="Pickup Location">
-                <select style={S.in} value={equip.pickup} onChange={(e) => setEquip({ ...equip, pickup: e.target.value })}>
-                  <option value="">—</option>{PICKUP_LOCATIONS.map((p) => <option key={p}>{p}</option>)}
-                </select>
+                <SelectOther value={equip.pickup} onChange={(v) => setEquip({ ...equip, pickup: v })} options={PICKUP_LOCATIONS} />
               </Field>
             )}
           </Block>
@@ -619,15 +686,13 @@ function App() {
             </Block>
           )}
 
-          <Block n="6" title="Line Set & Extension Ladder">
+          <Block n="6" title="Line Set & Extension Ladder" collapsible>
             <Field l="Running a new line set?">
               <Pills v={newLineSet} set={setNewLineSet} opts={[{ v: "yes", l: "Yes" }, { v: "no", l: "No" }]} />
             </Field>
             {newLineSet === "yes" && (
               <Field l="Line set size">
-                <select style={S.in} value={lineSetSize} onChange={(e) => setLineSetSize(e.target.value)}>
-                  {CATALOG.lineSetSizes.map((o) => <option key={o}>{o}</option>)}
-                </select>
+                <SelectOther value={lineSetSize} onChange={setLineSetSize} options={CATALOG.lineSetSizes} />
               </Field>
             )}
             <Field l="Need an extension ladder?">
@@ -638,7 +703,7 @@ function App() {
             )}
           </Block>
 
-          <Block n="7" title="Job Boxes">
+          <Block n="7" title="Job Boxes" collapsible>
             <div style={S.chkGrid}>
               {CATALOG.jobBoxes.map((b) => {
                 const locked = auto.has(b);
@@ -654,7 +719,37 @@ function App() {
             </div>
           </Block>
 
-          <Block n="8" title="Disconnect / Load Center">
+          {zoneActive && (
+            <Block n="7b" title="Zone System — Control &amp; Dampers">
+              <div style={S.auto}>✔ Zone System Job Box selected — pick the control and dampers.</div>
+              <Field l="Zone Control">
+                <Pills v={zoneControl} set={(v) => setZoneControl(zoneControl === v ? "" : v)} opts={CATALOG.zoneControls} wrap />
+              </Field>
+              <div style={S.secWrap}>
+                <div style={S.secTitle}>Zone Dampers</div>
+                <div style={S.qtyGrid}>
+                  {CATALOG.zoneDampers.map((size) => {
+                    const q = zoneDampers[size] || 0;
+                    return (
+                      <div key={size} style={{ ...S.qtyItem, ...(q ? S.qtyOn : {}) }}>
+                        <button style={S.step} onClick={() => setDamperQty(size, q - 1)}>−</button>
+                        <span style={S.qtyN}>{q}</span>
+                        <button style={S.step} onClick={() => setDamperQty(size, q + 1)}>+</button>
+                        <span style={S.qtyLbl}>{size}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <Field l="Damper Model">
+                <Pills v={damperModel}
+                  set={(v) => setDamperModel(damperModel === v ? "" : v)}
+                  opts={["EWC Model # EURD", "Honeywell Model # HARD"]} wrap />
+              </Field>
+            </Block>
+          )}
+
+          <Block n="8" title="Disconnect / Load Center" collapsible>
             <Row>
               <Field l="Indoor QTY"><input style={S.in} type="number" min="0" value={discIndoor} onChange={(e) => setDiscIndoor(e.target.value)} /></Field>
               <Field l="Outdoor QTY"><input style={S.in} type="number" min="0" value={discOutdoor} onChange={(e) => setDiscOutdoor(e.target.value)} /></Field>
@@ -713,8 +808,48 @@ function App() {
                             <span style={S.qtyLbl}>{item}</span>
                           </div>);
                       })}</div>}
+                  {s.special && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      {[0, 1].map((i) => (
+                        <input key={i} style={S.in} value={(special[s.key] || [])[i] || ""}
+                          onChange={(e) => setSpecial((p) => {
+                            const arr = [...(p[s.key] || ["", ""])];
+                            arr[i] = e.target.value;
+                            return { ...p, [s.key]: arr };
+                          })}
+                          placeholder={`Special ${s.key === "thermostats" ? "model" : "size"} ${i + 1}`} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
+              {group === "Air Distribution" && (
+                <div style={S.secWrap}>
+                  <div style={S.secTitle}>Supply Grill — Floor / Ceiling</div>
+                  <div style={S.elecHead}>
+                    <span>Size</span>
+                    <span style={S.elecCols}><span>FLOOR</span><span>CEIL</span></span>
+                  </div>
+                  {CATALOG.supplyGrills.map((size) => {
+                    const qs = supplyG[size] || { floor: 0, ceiling: 0 };
+                    const on = qs.floor || qs.ceiling;
+                    return (
+                      <div key={size} style={{ ...S.elecRow, ...(on ? S.qtyOn : {}) }}>
+                        <span style={S.elecLbl}>{size}</span>
+                        <Stepper q={qs.floor} onMinus={() => bumpSupplyG(size, "floor", -1)} onPlus={() => bumpSupplyG(size, "floor", 1)} />
+                        <Stepper q={qs.ceiling} onMinus={() => bumpSupplyG(size, "ceiling", -1)} onPlus={() => bumpSupplyG(size, "ceiling", 1)} />
+                      </div>
+                    );
+                  })}
+                  <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                    {[0, 1].map((i) => (
+                      <input key={i} style={S.in} value={supplyGSpecial[i] || ""}
+                        onChange={(e) => setSupplyGSpecial((p) => { const n = [...p]; n[i] = e.target.value; return n; })}
+                        placeholder={`Special size ${i + 1}`} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </Block>
           ))}
 
@@ -805,7 +940,11 @@ function App() {
             <SL k="Line Set" v={newLineSet === "yes" ? lineSetSize : newLineSet === "no" ? "Reuse existing" : "—"} />
             <SL k="Attic Access" v={isAttic ? (atticLadder === "yes" ? interiorAccess || "ladder needed" : "no ladder") : "n/a"} />
             <SL k="Ext. Ladder" v={extLadderNeed === "yes" ? extLadder || "yes" : "no"} />
-            <SL k="Thermostat" v={sel.thermostats || "—"} />
+            <SL k="Thermostat" v={(() => {
+              const picks = Object.entries(sel.thermostats || {}).map(([m, q]) => `${m} ×${q}`);
+              const specials = (special.thermostats || []).filter((s) => s?.trim()).map((s) => s.trim());
+              return [...picks, ...specials].join(", ") || "—";
+            })()} />
             <SL k="Portables" v={portables !== "yes" ? "None" : (() => {
               const parts = [];
               if (Number(portHeaters) > 0) parts.push(`${portHeaters} Portable Heater${Number(portHeaters) > 1 ? "s" : ""}`);
@@ -867,6 +1006,32 @@ const Pills = ({ v, set, opts, suf = "", wrap }) => (
   </div>
 );
 
+// Dropdown with an "Other — type it in" escape hatch.
+// When "Other" is active, the SAME space becomes a text box (with a ↩ to return to the list).
+const SelectOther = ({ value, onChange, options, groups }) => {
+  const inList = options.includes(value);
+  const isCustom = value !== "" && !inList;        // a typed-in value
+  const typing = isCustom || value === "__other__";
+  if (typing) {
+    return (
+      <div style={{ display: "flex", gap: 6 }}>
+        <input style={{ ...S.in, flex: 1 }} autoFocus value={value === "__other__" ? "" : value}
+          onChange={(e) => onChange(e.target.value)} placeholder="Type it in" />
+        <button style={S.backBtn} title="Back to list" onClick={() => onChange("")}>↩</button>
+      </div>
+    );
+  }
+  return (
+    <select style={S.in} value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">—</option>
+      {groups
+        ? groups.map((g) => <optgroup key={g.label} label={g.label}>{g.items.map((o) => <option key={o}>{o}</option>)}</optgroup>)
+        : options.map((o) => <option key={o}>{o}</option>)}
+      <option value="__other__">Other — type it in</option>
+    </select>
+  );
+};
+
 /* ---------- styles ---------- */
 const ink = "#16191d", amber = "#f6a821", paper = "#fbfaf7", line = "#d8d4cc", muted = "#6b6962";
 const S = {
@@ -890,6 +1055,7 @@ const S = {
   auto: { fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "#3a7a3a", marginTop: 8, lineHeight: 1.5 },
   reqHint: { fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#c0392b", marginTop: 6, fontWeight: 700 },
   stampBtn: { fontFamily: "'Oswald',sans-serif", fontSize: 13, padding: "9px 16px", background: ink, color: amber, border: "none", borderRadius: 3, cursor: "pointer", fontWeight: 600, marginTop: 10 },
+  backBtn: { fontFamily: "'Oswald',sans-serif", fontSize: 14, padding: "0 10px", background: "#f3efe6", color: ink, border: `1px solid ${line}`, borderRadius: 3, cursor: "pointer" },
   clearStamp: { fontFamily: "'Oswald',sans-serif", fontSize: 12, padding: "9px 12px", background: "#fff", color: ink, border: `1px solid ${line}`, borderRadius: 3, cursor: "pointer", marginTop: 10, marginLeft: 8 },
   stampShown: { fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: "#3a7a3a", marginTop: 10, fontWeight: 700 },
   handoffStamp: { color: "#1a5c1a", fontWeight: 700 },
