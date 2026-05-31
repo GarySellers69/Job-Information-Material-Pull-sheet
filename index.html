@@ -19,6 +19,19 @@ const { useState, useMemo, useEffect } = React;
    MASTER DATA — parsed from the Job Information & Material Pull Sheet.
    Typos cleaned for the printed output. Edit here; the tool updates.
    ========================================================================= */
+// Pre-made duct system base kits (from the shop's duct-system spreadsheet).
+// Quantities are a starting point the planner can adjust. Supply grills are set
+// Floor/Ceiling from the attic/crawl answer; grill count starts from the kit.
+const DUCT_KITS = {
+  "2 Ton":   { roundDuct: {'10"':2,'12"':2,'14"':2}, straightBoot:{"4 x 10 x 6":3,"4 x 10 x 8":5}, ninetyBoot:{"4 x 10 x 6":1,"4 x 10 x 8":1}, sheetMetal:{'48" x 96" 26ga Flat Metal':1,"S Cleat 10'":2}, reducer:{'10" x 12"':1,'12" x 14"':1}, endCap:{'10"':1}, saddleCollar:{'6"':3,'8"':5}, supplyGrill:{"4 x 10":8}, flexSupply:{'6" R8':3,'8" R8':5}, flexReturn:{'14" R8':1}, aCollar:{'14"':2} },
+  "2.5 Ton": { roundDuct: {'10"':2,'12"':2,'14"':2}, straightBoot:{"4 x 10 x 6":4,"4 x 10 x 8":6}, ninetyBoot:{"4 x 10 x 6":1,"4 x 10 x 8":1}, sheetMetal:{'48" x 96" 26ga Flat Metal':1,"S Cleat 10'":2}, reducer:{'10" x 12"':1,'12" x 14"':1,'14" x 16"':1}, endCap:{'10"':1}, saddleCollar:{'6"':4,'8"':6}, supplyGrill:{"4 x 10":12}, flexSupply:{'6" R8':4,'8" R8':6}, flexReturn:{'16" R8':1}, aCollar:{'16"':2} },
+  "3 Ton":   { roundDuct: {'10"':3,'12"':3,'14"':3}, straightBoot:{"4 x 10 x 6":5,"4 x 10 x 8":7}, ninetyBoot:{"4 x 10 x 6":1,"4 x 10 x 8":1}, sheetMetal:{'48" x 96" 26ga Flat Metal':1,"S Cleat 10'":2}, reducer:{'10" x 12"':1,'12" x 14"':1,'14" x 18"':1}, endCap:{'10"':1}, saddleCollar:{'6"':5,'8"':7}, supplyGrill:{"4 x 10":12}, flexSupply:{'6" R8':5,'8" R8':7}, flexReturn:{'18" R8':1}, aCollar:{'18"':2} },
+  "3.5 Ton": { roundDuct: {'10"':4,'12"':4,'14"':3}, straightBoot:{"4 x 10 x 6":6,"4 x 10 x 8":8}, ninetyBoot:{"4 x 10 x 6":1,"4 x 10 x 8":1}, sheetMetal:{'48" x 96" 26ga Flat Metal':1,"S Cleat 10'":2}, reducer:{'10" x 12"':1,'12" x 14"':1,'14" x 18"':1}, endCap:{'10"':1}, saddleCollar:{'6"':6,'8"':8}, supplyGrill:{"4 x 10":14}, flexSupply:{'6" R8':6,'8" R8':8}, flexReturn:{'14" R8':2}, aCollar:{'14"':4} },
+  "4 Ton":   { roundDuct: {'10"':4,'12"':4,'16"':3}, straightBoot:{"4 x 10 x 6":6,"4 x 10 x 8":10}, ninetyBoot:{"4 x 10 x 6":1,"4 x 10 x 8":1}, sheetMetal:{'48" x 96" 26ga Flat Metal':2,"S Cleat 10'":2}, reducer:{'10" x 12"':1,'12" x 16"':1,'16" x 18"':1}, endCap:{'10"':1}, saddleCollar:{'6"':6,'8"':10}, supplyGrill:{"4 x 10":16}, flexSupply:{'6" R8':6,'8" R8':10}, flexReturn:{'14" R8':2}, aCollar:{'14"':4} },
+  "5 Ton":   { roundDuct: {'10"':4,'12"':4,'14"':3,'18"':2}, straightBoot:{"4 x 10 x 6":7,"4 x 10 x 8":11}, ninetyBoot:{"4 x 10 x 6":1,"4 x 10 x 8":1}, sheetMetal:{'48" x 96" 26ga Flat Metal':2,"S Cleat 10'":2}, reducer:{'10" x 12"':1,'12" x 14"':1,'14" x 18"':1}, endCap:{'10"':1}, saddleCollar:{'6"':7,'8"':11}, supplyGrill:{"4 x 10":18}, flexSupply:{'6" R8':7,'8" R8':11}, flexReturn:{'14" R8':2}, aCollar:{'14"':4} },
+};
+const DUCT_KIT_TONS = ["2 Ton", "2.5 Ton", "3 Ton", "3.5 Ton", "4 Ton", "5 Ton"];
+
 const JOB_TYPES = [
   "Split Heat Pump Change Out",
   "Gas Furnace Coil & Condenser Change Out",
@@ -274,6 +287,10 @@ function App() {
   });
   const [supplyGSpecial, setSupplyGSpecial] = useState(["", ""]);
 
+  // Pre-made duct system wizard
+  const [ductWizard, setDuctWizard] = useState(null); // null or { ton, step data }
+  const [lastKit, setLastKit] = useState(null); // remembers what the last kit added, for undo
+
   const auto = useMemo(() => {
     const s = autoBoxesFor(jobType);
     if (/Gas Furnace|Furnace Only|Gas Pack/.test(jobType) && vent === "90") s.add("90% Furnace PVC Job Box");
@@ -321,7 +338,7 @@ function App() {
     atticLadder, interiorAccess, extLadderNeed, extLadder,
     newLineSet, lineSetSize, lpKit, lpKitModel,
     discIndoor, discOutdoor, elecBrands, elec,
-    extraBoxes: [...extraBoxes], sel, special, supplyG, supplyGSpecial, zoneControl, zoneDampers, damperModel, video: [...video], handoff,
+    extraBoxes: [...extraBoxes], sel, special, supplyG, supplyGSpecial, zoneControl, zoneDampers, damperModel, lastKit, video: [...video], handoff,
   });
 
   const applyData = (d) => {
@@ -344,6 +361,7 @@ function App() {
     setSupplyG(d.supplyG || {}); setSupplyGSpecial(d.supplyGSpecial || ["", ""]);
     setZoneControl(d.zoneControl || ""); setZoneDampers(d.zoneDampers || {});
     setDamperModel(d.damperModel || "");
+    setLastKit(d.lastKit || null);
     setVideo(new Set(d.video || []));
     setHandoff(d.handoff || "");
     return true;
@@ -396,12 +414,102 @@ function App() {
     setElecBrands(["", ""]); setElec({});
     setExtraBoxes(new Set()); setSel({}); setSpecial({}); setVideo(new Set());
     setSupplyG({}); setSupplyGSpecial(["", ""]);
+    setDuctWizard(null); setLastKit(null);
     setZoneControl(""); setZoneDampers({}); setDamperModel("");
     setHandoff("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Save = rebuild a clean, self-contained HTML file from the pristine
+  // Apply a pre-made duct system kit into the editable sections.
+  // opts: { location: "Attic"|"Crawl Space", trunk, returnsNote, supplyRuns, toeSpace }
+  const applyDuctKit = (ton, opts) => {
+    const kit = DUCT_KITS[ton];
+    if (!kit) return;
+    const side = opts.location === "Crawl Space" ? "floor" : "ceiling";
+    const grillCount = opts.supplyRuns && Number(opts.supplyRuns) > 0 ? Number(opts.supplyRuns) : Object.values(kit.supplyGrill)[0];
+    const grillSize = opts.grillSize && opts.grillSize.trim() ? opts.grillSize.trim() : Object.keys(kit.supplyGrill)[0];
+    const noteLine = `[${ton} duct system] ${opts.location || "?"} · ${opts.trunk || "?"} trunk` +
+      (opts.returnsCount || opts.returnsNote ? ` · returns: ${opts.returnsCount || "?"}${opts.returnsNote ? " @ " + opts.returnsNote : ""}` : "") +
+      (opts.supplyRuns ? ` · ${opts.supplyRuns} supply runs` : "") +
+      (opts.toeSpace ? ` · toe-space: ${opts.toeSpace}` : "") +
+      (opts.houseSize ? ` · house ${opts.houseSize}` : "");
+
+    // Remember exactly what we add, so Undo can remove precisely this.
+    // Build the record synchronously (NOT inside a setState updater).
+    const sectionKeys = ["roundDuct", "straightBoot", "ninetyBoot", "sheetMetal", "reducer", "endCap", "saddleCollar", "flexSupply", "flexReturn", "aCollar"];
+    const added = { sections: {}, grill: { size: grillSize, side, count: grillCount }, note: noteLine, ton };
+    sectionKeys.forEach((key) => { if (kit[key]) added.sections[key] = { ...kit[key] }; });
+
+    setSel((p) => {
+      const next = { ...p };
+      sectionKeys.forEach((key) => {
+        if (!kit[key]) return;
+        const cur = { ...(next[key] || {}) };
+        Object.entries(kit[key]).forEach(([item, q]) => { cur[item] = (cur[item] || 0) + q; });
+        next[key] = cur;
+      });
+      return next;
+    });
+    setSupplyG((p) => {
+      const cur = { ...(p[grillSize] || { floor: 0, ceiling: 0 }) };
+      cur[side] = (cur[side] || 0) + grillCount;
+      return { ...p, [grillSize]: cur };
+    });
+    // Return grills → filter grills section (count + size from wizard)
+    const returnCount = opts.returnsCount && Number(opts.returnsCount) > 0 ? Number(opts.returnsCount) : 0;
+    const returnSize = opts.returnGrillSize && opts.returnGrillSize.trim() ? opts.returnGrillSize.trim() : "";
+    if (returnCount > 0 && returnSize) {
+      added.filterGrill = { size: returnSize, count: returnCount };
+      setSel((p) => {
+        const cur = { ...(p.filterGrills || {}) };
+        cur[returnSize] = (cur[returnSize] || 0) + returnCount;
+        return { ...p, filterGrills: cur };
+      });
+    }
+    setExtraBoxes((p) => { const n = new Set(p); n.add("Duct Material Job Box"); return n; });
+    setJob((j) => ({ ...j, notes: (j.notes ? j.notes + "\n" : "") + noteLine }));
+    setLastKit(added);
+    setDuctWizard(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Undo the last loaded duct kit — subtract exactly what it added.
+  const undoDuctKit = () => {
+    if (!lastKit || !lastKit.sections) { alert("Nothing to undo."); return; }
+    if (!window.confirm(`Undo the ${lastKit.ton} duct kit? This removes the quantities it added.`)) return;
+    setSel((p) => {
+      const next = { ...p };
+      Object.entries(lastKit.sections).forEach(([key, obj]) => {
+        const cur = { ...(next[key] || {}) };
+        Object.entries(obj).forEach(([item, q]) => {
+          const remaining = (cur[item] || 0) - q;
+          if (remaining > 0) cur[item] = remaining; else delete cur[item];
+        });
+        next[key] = cur;
+      });
+      return next;
+    });
+    setSupplyG((p) => {
+      const { size, side, count } = lastKit.grill;
+      const cur = { ...(p[size] || { floor: 0, ceiling: 0 }) };
+      const remaining = (cur[side] || 0) - count;
+      if (remaining > 0) cur[side] = remaining; else cur[side] = 0;
+      if (!cur.floor && !cur.ceiling) { const n = { ...p }; delete n[size]; return n; }
+      return { ...p, [size]: cur };
+    });
+    if (lastKit.filterGrill) {
+      setSel((p) => {
+        const cur = { ...(p.filterGrills || {}) };
+        const { size, count } = lastKit.filterGrill;
+        const remaining = (cur[size] || 0) - count;
+        if (remaining > 0) cur[size] = remaining; else delete cur[size];
+        return { ...p, filterGrills: cur };
+      });
+    }
+    setJob((j) => ({ ...j, notes: (j.notes || "").split("\n").filter((l) => l !== lastKit.note).join("\n") }));
+    setLastKit(null);
+  };
+
   // source + current data (does NOT photograph the live, running page).
   const saveProgress = () => {
     const data = collectData();
@@ -629,6 +737,63 @@ function App() {
               <div style={S.auto}>
                 ✔ Auto-pulls: {[...auto].join(", ")}
                 {flags.isGas && <div style={S.flag}>⚑ Gas job — pick venting in step 5</div>}
+              </div>
+            )}
+          </Block>
+
+          <Block n="3b" title="Pre-Made Duct System (optional)" collapsible>
+            <div style={S.note}>Pick a tonnage to load a base duct kit. Answer a few questions, then adjust anything in the sections below.</div>
+            <div style={S.pills}>
+              {DUCT_KIT_TONS.map((t) => (
+                <button key={t} style={{ ...S.pill, ...(ductWizard?.ton === t ? S.pillOn : {}) }}
+                  onClick={() => setDuctWizard({ ton: t, location: location || "", trunk: "", returnsCount: "", returnsNote: "", returnGrillSize: "", supplyRuns: "", grillSize: "", toeSpace: "", houseSize: "" })}>
+                  {t}
+                </button>
+              ))}
+            </div>
+            {lastKit && !ductWizard && (
+              <div style={{ marginTop: 10 }}>
+                <div style={S.auto}>✔ Loaded: {lastKit.ton} duct kit</div>
+                <button style={S.clearBtn} onClick={undoDuctKit}>↶ Undo {lastKit.ton} kit</button>
+              </div>
+            )}
+            {ductWizard && (
+              <div style={S.subBox}>
+                <div style={S.auto}>Building a {ductWizard.ton} duct system</div>
+                <Field l="Q1 · Duct location (sets Floor vs Ceiling grills)">
+                  <Pills v={ductWizard.location} set={(v) => setDuctWizard({ ...ductWizard, location: v })} opts={["Attic", "Crawl Space"]} />
+                </Field>
+                <Field l="Q2 · House width & length">
+                  <input style={S.in} value={ductWizard.houseSize} onChange={(e) => setDuctWizard({ ...ductWizard, houseSize: e.target.value })} placeholder="e.g. 40 x 60" />
+                </Field>
+                <Field l="Q3 · Trunk line">
+                  <Pills v={ductWizard.trunk} set={(v) => setDuctWizard({ ...ductWizard, trunk: v })} opts={["Straight", "Tee"]} />
+                </Field>
+                {ductWizard.trunk === "Tee" && <div style={S.flag}>⚑ Tee trunk — adjust trunk/fittings in the sections after loading.</div>}
+                <Field l="Q4 · Returns">
+                  <Row>
+                    <Field l="How many"><input style={S.in} type="number" min="0" value={ductWizard.returnsCount} onChange={(e) => setDuctWizard({ ...ductWizard, returnsCount: e.target.value })} placeholder="qty" /></Field>
+                    <Field l="Notes (optional)"><input style={S.in} value={ductWizard.returnsNote} onChange={(e) => setDuctWizard({ ...ductWizard, returnsNote: e.target.value })} placeholder="any notes" /></Field>
+                  </Row>
+                  <div style={{ marginTop: 8 }}>
+                    <span style={S.fl}>Return / Filter grill size</span>
+                    <Pills v={ductWizard.returnGrillSize} set={(v) => setDuctWizard({ ...ductWizard, returnGrillSize: ductWizard.returnGrillSize === v ? "" : v })} opts={CATALOG.filterGrills} wrap />
+                  </div>
+                </Field>
+                <Field l="Q5 · How many supply runs?">
+                  <input style={S.in} type="number" min="0" value={ductWizard.supplyRuns} onChange={(e) => setDuctWizard({ ...ductWizard, supplyRuns: e.target.value })} placeholder="grill count (blank = kit default)" />
+                </Field>
+                <Field l="Q6 · What size are the supply grills?">
+                  <Pills v={ductWizard.grillSize} set={(v) => setDuctWizard({ ...ductWizard, grillSize: ductWizard.grillSize === v ? "" : v })} opts={CATALOG.supplyGrills} wrap />
+                  <div style={S.note}>Blank = kit default ({Object.keys(DUCT_KITS[ductWizard.ton].supplyGrill)[0]})</div>
+                </Field>
+                <Field l="Q7 · Any toe-space registers? How many?">
+                  <input style={S.in} value={ductWizard.toeSpace} onChange={(e) => setDuctWizard({ ...ductWizard, toeSpace: e.target.value })} placeholder="e.g. 2, or none" />
+                </Field>
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button style={S.stampBtn} onClick={() => applyDuctKit(ductWizard.ton, ductWizard)}>✓ Load {ductWizard.ton} kit</button>
+                  <button style={S.clearStamp} onClick={() => setDuctWizard(null)}>Cancel</button>
+                </div>
               </div>
             )}
           </Block>
