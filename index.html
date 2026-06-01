@@ -104,7 +104,7 @@ const CATALOG = {
   squareToRound: ["14 x 20 x 12", "14 x 20 x 14", "14 x 20 x 16", "14 x 20 x 18", "16 x 20 x 12", "16 x 20 x 14",
     "16 x 20 x 16", "16 x 20 x 18", "20 x 20 x 12", "20 x 20 x 14", "20 x 20 x 16", "20 x 20 x 18", "20 x 25 x 14", "20 x 25 x 16", "20 x 25 x 18"],
   wye: ["14 x 12 x 12", "16 x 14 x 14", "18 x 16 x 16"],
-  tee: ["12 x 12 x 12", "14 x 14 x 14", "16 x 16 x 16", "18 x 18 x 18"],
+  tee: ["12 x 12 x 12 (SHMT26121212)", "14 x 14 x 14 (SHMT26141414)", "16 x 16 x 16 (SHMT26161616)", "18 x 18 x 18 (SHMT26181818)"],
   elbow: ['6"', '8"', '10"', '12"', '14"', '16"', '18"'],
   endCap: ['6"', '8"', '10"', '12"', '14"', '16"'],
   reducer: ['4" x 6"', '6" x 8"', '10" x 12"', '10" x 14"', '10" x 16"', '12" x 14"', '12" x 16"', '14" x 16"', '14" x 18"', '16" x 18"'],
@@ -127,7 +127,25 @@ const CATALOG = {
   mediaCleaner: ["HF100F1620 1200cfm", "HF100F1625 1400cfm", "HF100F2020 1400cfm", "HF100F2025 1700cfm"],
   misc: ['OSB Plywood 3/4"', 'Plywood Treated 3/4"', "2 x 4 x 8 Not Treated", "2 x 4 x 8 Treated", "Door Molding",
     'Brick Lintel 48"', "Mortar Mix", '8" Block', '4" Block', 'Red Brick 4"', 'Door Hinges 3"', "3.5 Swivel Hasp",
-    'Unistrut 1.5" x 10\'', 'Threaded Rod 3/8"', '3/8" Washers', "3/8 Nuts"],
+    "Strut Channel 1-5/8 x 10ft (FNWST7883S14Z2S1)", 'Thread Rod 3/8" x 10ft (GATRC10)', '3/8" Washers (FNWFLWZ38)', "3/8 Nuts (FNWHNG2Z38)",
+    "Sammys Sidewinder 3/8 x 2-1/2in Rod Anchor (B8022925)",
+    "2 in. No Hub Heavy Duty (PFNHHMDCK)",
+    "3 in. No Hub Heavy Duty (PFNHHMDCJ)",
+    "4 in. No Hub Heavy Duty (PFNHHMDCP)",
+    "Condensate Pump (PSCPV315WS)",
+    "3/8in ID Clear Vinyl Tubing 100ft (DIV738)",
+    "1/2in-3/4in PVC Adapter for Mini Split (REC83020)",
+    "3/8 x 3/4in Barbed x MPT Nylon Adapter (DIV701043)",
+    "Hardcast CCWI-181 Duct Sealant (HAR304144)",
+    "2in Wood Handle Chip Brush (PS67194)",
+    "3in x 100yd Polypropylene Duct Strap Black (PSDSBM)",
+    "3/4in x 10ft Plain End PVC (P40PF10)",
+    "1-1/8in ID x 1/2in Wall Rubber Pipe Insulation (JI1118)",
+    "40 VA Transformer (RECM50354)",
+    "75 VA Transformer (RECM50321)",
+    "8 x 100ft 4 mil Plastic Sheeting Clear (JS08100)",
+    "3-Pole Toggle Switch Black (LMS303DS)",
+    "9/16 x 7/16in Staple Box of 1000 (BSTCR50199161)"],
   block: ["Block 16 x 8 x 8", "Block 16 x 8 x 4", "Red Brick 2 x 4 x 6"],
   pvcAddon: ['2" PVC Pipe 10ft', '3" PVC Pipe 10ft', "Duct Wrap"],
   concentric: ['2" Concentric Kit', '3" Concentric Kit'],
@@ -970,7 +988,7 @@ function App() {
                             <button style={S.step} onClick={() => setQty(s.key, item, q - 1)}>−</button>
                             <span style={S.qtyN}>{q}</span>
                             <button style={S.step} onClick={() => setQty(s.key, item, q + 1)}>+</button>
-                            <span style={S.qtyLbl}>{item}</span>
+                            <span style={S.qtyLbl}>{displayLabel(item)}</span>
                           </div>);
                       })}</div>}
                   {s.special && (
@@ -1073,7 +1091,7 @@ function App() {
               <div style={S.pgTitle}>{g.group}</div>
               {g.items.map((it, i) => (
                 <div key={it.item + i} style={S.pi}>
-                  <span style={S.box}>☐</span><span style={S.qtyChip}>{it.qty}</span><span>{it.item}</span>
+                  <span style={S.box}>☐</span><span style={S.qtyChip}>{it.qty}</span><span>{renderItem(it.item)}</span>
                 </div>
               ))}
             </div>
@@ -1160,11 +1178,25 @@ const Stepper = ({ q, onMinus, onPlus }) => (
 );
 const Field = ({ l, children }) => <label style={S.field}><span style={S.fl}>{l}</span>{children}</label>;
 const SL = ({ k, v }) => <div style={S.sl}><span style={S.slk}>{k}</span><span style={S.slv}>{v}</span></div>;
+// Render a pull-list item, bolding a trailing "(PARTNUMBER)" so the warehouse spots it.
+const renderItem = (text) => {
+  const m = text.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  if (!m) return text;
+  return <>{m[1]} (<strong>{m[2]}</strong>)</>;
+};
+
+// In the selection UI, show only the size/description — hide the "(PARTNUMBER)".
+// The full string (with part number) still flows to the pull sheet.
+const displayLabel = (text) => {
+  const m = text.match(/^(.*?)\s*\([^)]+\)\s*$/);
+  return m ? m[1] : text;
+};
+
 const Pills = ({ v, set, opts, suf = "", wrap }) => (
   <div style={S.pills}>
     {opts.map((o) => {
       const val = typeof o === "string" ? o : o.v;
-      const lbl = typeof o === "string" ? o + suf : o.l;
+      const lbl = typeof o === "string" ? displayLabel(o) + suf : o.l;
       const on = v === val;
       return <button key={val} onClick={() => set(val)} style={{ ...S.pill, ...(on ? S.pillOn : {}) }}>{lbl}</button>;
     })}
