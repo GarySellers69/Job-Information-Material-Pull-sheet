@@ -288,7 +288,7 @@ const ELEC_SECTIONS = [
 ];
 
 function App() {
-  const [job, setJob] = useState({ jobNo: "", customer: "", address: "", city: "", zip: "", phone: "", installDate: "", notes: "" });
+  const [job, setJob] = useState({ jobNo: "", customer: "", address: "", city: "", state: "", zip: "", phone: "", installDate: "", notes: "" });
   const [installers, setInstallers] = useState(["", "", "", ""]);
   const [equip, setEquip] = useState({ brand: "", orderDate: "", delivery: "", pickup: "" });
 
@@ -749,7 +749,23 @@ function App() {
             </Row>
             <Row>
               <Field l="City"><input style={S.in} value={job.city} onChange={(e) => setJob({ ...job, city: e.target.value })} /></Field>
-              <Field l="Zip"><input style={S.in} value={job.zip} onChange={(e) => setJob({ ...job, zip: e.target.value })} /></Field>
+              <Field l="State"><input style={S.in} value={job.state || ""} onChange={(e) => setJob({ ...job, state: e.target.value })} /></Field>
+              <Field l="Zip"><input style={S.in} value={job.zip} inputMode="numeric"
+                onChange={(e) => {
+                  const z = e.target.value;
+                  setJob((j) => ({ ...j, zip: z }));
+                  if (/^\d{5}$/.test(z)) {
+                    fetch(`https://api.zippopotam.us/us/${z}`)
+                      .then((r) => r.ok ? r.json() : null)
+                      .then((d) => {
+                        if (d && d.places && d.places[0]) {
+                          const p = d.places[0];
+                          setJob((j) => ({ ...j, zip: z, city: j.city || p["place name"], state: j.state || p["state abbreviation"] }));
+                        }
+                      })
+                      .catch(() => { /* offline or not found — leave fields for manual entry */ });
+                  }
+                }} /></Field>
             </Row>
             <Row>
               {installers.map((v, i) => (
@@ -1115,7 +1131,7 @@ function App() {
               <div style={S.sheetTitle}>JOB INFORMATION &amp; MATERIAL PULL SHEET</div>
               <div style={S.meta}>
                 Job #{job.jobNo || "—"} · {job.customer || "—"}<br />
-                {job.address || "—"}{job.city ? `, ${job.city}` : ""} {job.zip}<br />
+                {job.address || "—"}{job.city ? `, ${job.city}` : ""}{job.state ? `, ${job.state}` : ""} {job.zip}<br />
                 {jobType || "no job type"} · {location || "no location"}<br />
                 Install {job.installDate || "—"} · {equip.brand || "—"} · {totalLines} line items<br />
                 Crew: {installers.filter(Boolean).join(", ") || "—"}
@@ -1136,11 +1152,18 @@ function App() {
           {pull.map((g) => (
             <div key={g.group} style={S.pg}>
               <div style={S.pgTitle}>{g.group}</div>
-              {g.items.map((it, i) => (
-                <div key={it.item + i} style={S.pi}>
-                  <span style={S.box}>☐</span><span style={S.qtyChip}>{it.qty}</span><span>{renderItem(it.item)}</span>
-                </div>
-              ))}
+              {g.items.map((it, i) => {
+                const pn = extractPart(it.item);
+                return (
+                  <div key={it.item + i} style={S.pi}>
+                    <span style={S.box}>☐</span><span style={S.qtyChip}>{it.qty}</span>
+                    <span style={{ flex: 1 }}>
+                      {renderItem(it.item)}
+                      {pn && <span style={S.bcWrap}><Barcode value={pn} /><span style={S.bcText}>{pn}</span></span>}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ))}
 
@@ -1225,6 +1248,46 @@ const Stepper = ({ q, onMinus, onPlus }) => (
 );
 const Field = ({ l, children }) => <label style={S.field}><span style={S.fl}>{l}</span>{children}</label>;
 const SL = ({ k, v }) => <div style={S.sl}><span style={S.slk}>{k}</span><span style={S.slv}>{v}</span></div>;
+
+// Pull a trailing "(PARTNUMBER)" out of an item label, if present.
+const extractPart = (text) => {
+  const m = text.match(/\(([^)]+)\)\s*$/);
+  return m ? m[1] : null;
+};
+
+// --- Code 128 (subset B) barcode → SVG. Self-contained, no library needed. ---
+const CODE128_PATTERNS = ["11011001100","11001101100","11001100110","10010011000","10010001100","10001001100","10011001000","10011000100","10001100100","11001001000","11001000100","11000100100","10110011100","10011011100","10011001110","10111001100","10011101100","10011100110","11001110010","11001011100","11001001110","11011100100","11001110100","11101101110","11101001100","11100101100","11100100110","11101100100","11100110100","11100110010","11011011000","11011000110","11000110110","10100011000","10001011000","10001000110","10110001000","10001101000","10001100010","11010001000","11000101000","11000100010","10110111000","10110001110","10001101110","10111011000","10111000110","10001110110","11101110110","11010001110","11000101110","11011101000","11011100010","11011101110","11101011000","11101000110","11100010110","11101101000","11101100010","11100011010","11101111010","11001000010","11110001010","10100110000","10100001100","10010110000","10010000110","10000101100","10000100110","10110010000","10110000100","10011010000","10011000010","10000110100","10000110010","11000010010","11001010000","11110111010","11000010100","10001111010","10100111100","10010111100","10010011110","10111100100","10011110100","10011110010","11110100100","11110010100","11110010010","11011011110","11011110110","11110110110","10101111000","10100011110","10001011110","10111101000","10111100010","11110101000","11110100010","10111011110","10111101110","11101011110","11110101110","11010000100","11010010000","11010011100","11000111010"];
+const code128B = (text) => {
+  // START B = 104, checksum, then STOP (106) + final bar "11"
+  const codes = [104];
+  let sum = 104;
+  for (let i = 0; i < text.length; i++) {
+    const val = text.charCodeAt(i) - 32; // subset B maps ASCII 32.. to 0..
+    if (val < 0 || val > 94) continue;   // skip unsupported chars
+    codes.push(val);
+    sum += val * (i + 1);
+  }
+  codes.push(sum % 103); // checksum
+  codes.push(106);       // stop
+  let bits = codes.map((c) => CODE128_PATTERNS[c]).join("") + "11";
+  return bits;
+};
+const Barcode = ({ value, height = 34 }) => {
+  if (!value) return null;
+  const bits = code128B(value);
+  const bw = 1.1; // bar unit width (px)
+  const rects = [];
+  let x = 0;
+  for (let i = 0; i < bits.length; i++) {
+    if (bits[i] === "1") rects.push(<rect key={i} x={x} y="0" width={bw} height={height} fill="#000" />);
+    x += bw;
+  }
+  return (
+    <svg width={x} height={height} className="barcode" style={{ display: "block" }}
+      viewBox={`0 0 ${x} ${height}`} shapeRendering="crispEdges">{rects}</svg>
+  );
+};
+
 // Render a pull-list item, bolding a trailing "(PARTNUMBER)" so the warehouse spots it.
 const renderItem = (text) => {
   const m = text.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
@@ -1346,6 +1409,8 @@ const S = {
   pi: { display: "flex", alignItems: "center", gap: 9, fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5, padding: "2px 0" },
   box: { fontSize: 14 },
   qtyChip: { background: "#efe9da", borderRadius: 2, padding: "0 6px", fontSize: 11, fontWeight: 700, minWidth: 16, textAlign: "center" },
+  bcWrap: { display: "inline-flex", flexDirection: "column", alignItems: "center", marginLeft: 12, verticalAlign: "middle" },
+  bcText: { fontSize: 9, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1, marginTop: 1 },
   spec: { border: `1px solid ${line}`, borderRadius: 3, overflow: "hidden" },
   sl: { display: "flex", borderBottom: `1px solid ${line}`, fontSize: 12.5 },
   slk: { fontFamily: "'Oswald',sans-serif", letterSpacing: ".04em", width: 100, padding: "7px 9px", background: "#f3efe6", textTransform: "uppercase", fontSize: 11 },
@@ -1366,6 +1431,7 @@ const CSS = `
   .sheet-panel > div:first-child{margin-top:0 !important;}
   *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}
   .ms-unit{break-inside:avoid;page-break-inside:avoid;}
+  .barcode{break-inside:avoid;page-break-inside:avoid;}
   @page{margin:0.5in;}
 }
 `;
