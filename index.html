@@ -88,7 +88,7 @@ const CATALOG = {
     "90% Furnace PVC Job Box", "B-Vent Metal Fab Job Box", "B-Vent Hart & Cooley Job Box",
     "Duct Material Job Box", "Zone System Job Box"],
   thermostats: ["ECONET RETST800SYS", "Honeywell THT2320WF4010", "Honeywell THT2320U4006",
-    "Honeywell THT1320U4002", "HW Elite PRO YTHX1200WS", "Honeywell TH8320R1003", "LENNOX S40 Touchscreen"],
+    "Honeywell THT1320U4002", "HW Elite PRO YTHX1200WS", "Honeywell TH8320R1003", "LENNOX S40 Touchscreen", "Carbon Monoxide Detector"],
   zoneControls: ["HARMONY 3 LENNOX LZSV", "ECONET RUUD REPNL700ZON"],
   zoneDampers: ['10"', '12"', '14"', '16"', '18"'],
   drainPans: ["22 x 6 x 8 Rail", "30 x 36", "30 x 60", "32 x 72"],
@@ -122,7 +122,7 @@ const CATALOG = {
   breakerDouble: ["15 Amp", "20 Amp", "25 Amp", "30 Amp", "35 Amp", "40 Amp", "45 Amp", "50 Amp", "60 Amp"],
   breakerSingle: ["15 Amp", "20 Amp"],
   tandem: ["15 Amp", "20 Amp"],
-  surge: ["Surge AG3001", "ICP493 Surge"],
+  surge: ["Surge AG3000", "ICP493 Surge"],
   iaq: ["PHI-PKG-5 RGF", "Air Scrubber", "Reme Halo LED", "Reme Halo", "Blue Tube"],
   mediaCleaner: ["HF100F1620 1200cfm", "HF100F1625 1400cfm", "HF100F2020 1400cfm", "HF100F2025 1700cfm"],
   misc: ['OSB Plywood 3/4"', 'Plywood Treated 3/4"', "2 x 4 x 8 Not Treated", "2 x 4 x 8 Treated", "Door Molding",
@@ -168,6 +168,14 @@ const PART_NUMBERS = {
   '48" x 96" 26ga Flat Metal': "FSM264896", "S Cleat 10'": "SHMSCLT26120", "Standing Lock 10'": "SHSSCLTG120",
   // Line set fittings
   "Line Set Cover": "DIV230D4A", "Eve Penetration": "DIV230SF4", "Sidewall Penetration": "DIV230WC4", "End Piece": "DIV230DE4", "Elbow": "DIV230FB3", "Coupling": "DIV230CP4",
+  // Equipment pads
+  "24 x 48 x 3": "PSCPE24483", "36 x 36 x 3": "PSCPE3636", "40 x 40 x 3": "PSCPE40403", "45 x 58 x 3": "PSCPE45583", "52 x 52 x 3": "PSCPE52523", "56 x 58 x 3": "PSCPE56583",
+  // Surge protectors
+  "Surge AG3000": "IAG3000", "ICP493 Surge": "IICM493",
+  // IAQ
+  "PHI-PKG-5 RGF": "RPHIPKG524V", "Air Scrubber": "A9960052", "Reme Halo LED": "RREMELED", "Reme Halo": "RREMEH", "Blue Tube": "DIVTUVBTER2",
+  // Thermostat-section extras
+  "Carbon Monoxide Detector": "BCO250B",
 };
 
 // Per-section part numbers (used where the same label means different parts in
@@ -634,7 +642,7 @@ function App() {
 
     SECTIONS.forEach((s) => {
       const v = sel[s.key];
-      if (s.mode === "single") { if (v) add(s.group, `${s.title}: ${v}`); }
+      if (s.mode === "single") { if (v) add(s.group, withPart(s.key, v, `${s.title}: ${v}`)); }
       else if (v) Object.entries(v).forEach(([item, qty]) => add(s.group, item === s.title ? withPart(s.key, item, s.title) : withPart(s.key, item, `${s.title} ${item}`), qty));
       if (s.special) (special[s.key] || []).forEach((txt) => { if (txt?.trim()) add(s.group, `${s.title} — Special ${s.key === "thermostats" ? "model" : "size"}: ${txt.trim()}`, 1); });
     });
