@@ -176,6 +176,8 @@ const PART_NUMBERS = {
   "PHI-PKG-5 RGF": "RPHIPKG524V", "Air Scrubber": "A9960052", "Reme Halo LED": "RREMELED", "Reme Halo": "RREMEH", "Blue Tube": "DIVTUVBTER2",
   // Thermostat-section extras
   "Carbon Monoxide Detector": "BCO250B",
+  // Duct wrap (appears in its own Ductwork section and as a PVC/copper add-on)
+  "Duct Wrap": "K502867",
 };
 
 // Per-section part numbers (used where the same label means different parts in
@@ -662,8 +664,8 @@ function App() {
       s.cat && CATALOG[s.cat].forEach((item) => {
         const q = elec[`${s.title}|${item}`];
         const brandSuffix = s.key === "surge"; // surge has its own brand built in
-        if (q?.b1 > 0) add("Electrical", `${s.title} ${item}` + (brandSuffix ? "" : ` — ${elecBrands[0] || "Brand 1"}`), q.b1);
-        if (q?.b2 > 0) add("Electrical", `${s.title} ${item}` + (brandSuffix ? "" : ` — ${elecBrands[1] || "Brand 2"}`), q.b2);
+        if (q?.b1 > 0) add("Electrical", withPart(s.key, item, `${s.title} ${item}`) + (brandSuffix ? "" : ` — ${elecBrands[0] || "Brand 1"}`), q.b1);
+        if (q?.b2 > 0) add("Electrical", withPart(s.key, item, `${s.title} ${item}`) + (brandSuffix ? "" : ` — ${elecBrands[1] || "Brand 2"}`), q.b2);
       })
     );
 
