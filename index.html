@@ -93,7 +93,7 @@ const CATALOG = {
   zoneDampers: ['10"', '12"', '14"', '16"', '18"'],
   drainPans: ["22 x 6 x 8 Rail", "30 x 36", "30 x 60", "32 x 72"],
   equipmentPads: ["24 x 48 x 3", "36 x 36 x 3", "40 x 40 x 3", "45 x 58 x 3", "52 x 52 x 3", "56 x 58 x 3"],
-  lineSetSizes: ['3/8" x 3/4" 35FT', '3/8" x 3/4" 50FT', '3/8" x 7/8" 30FT', '3/8" x 7/8" 50FT'],
+  lineSetSizes: ['3/8" x 3/4" 30FT', '3/8" x 3/4" 50FT', '3/8" x 7/8" 30FT', '3/8" x 7/8" 50FT'],
   lineSetFittings: ["Line Set Cover", "Eve Penetration", "Sidewall Penetration", "End Piece", "Elbow", "Coupling"],
   supplyGrills: ["4 x 10", "4 x 12", "4 x 14", "6 x 10", "6 x 12", "2 x 10", "2 x 12", "2 x 14"],
   filterGrills: ["12 x 12 x 1", "14 x 20 x 1", "14 x 25 x 1", "16 x 20 x 1", "16 x 25 x 1", "20 x 20 x 1", "20 x 25 x 1"],
@@ -104,12 +104,12 @@ const CATALOG = {
   squareToRound: ["14 x 20 x 12", "14 x 20 x 14", "14 x 20 x 16", "14 x 20 x 18", "16 x 20 x 12", "16 x 20 x 14",
     "16 x 20 x 16", "16 x 20 x 18", "20 x 20 x 12", "20 x 20 x 14", "20 x 20 x 16", "20 x 20 x 18", "20 x 25 x 14", "20 x 25 x 16", "20 x 25 x 18"],
   wye: ["14 x 12 x 12", "16 x 14 x 14", "18 x 16 x 16"],
-  tee: ["12 x 12 x 12 (SHMT26121212)", "14 x 14 x 14 (SHMT26141414)", "16 x 16 x 16 (SHMT26161616)", "18 x 18 x 18 (SHMT26181818)"],
+  tee: ["12 x 12 x 12", "14 x 14 x 14", "16 x 16 x 16", "18 x 18 x 18"],
   elbow: ['6"', '8"', '10"', '12"', '14"', '16"', '18"'],
   endCap: ['6"', '8"', '10"', '12"', '14"', '16"'],
-  reducer: ['4" x 6"', '6" x 8"', '10" x 12"', '10" x 14"', '10" x 16"', '12" x 14"', '12" x 16"', '14" x 16"', '14" x 18"', '16" x 18"'],
+  reducer: ['4" x 6"', '6" x 8"', '10" x 12"', '10" x 14"', '10" x 16"', '12" x 14"', '12" x 16"', '14" x 16"', '14" x 18"', '16" x 18"', '18" x 14"'],
   saddleCollar: ['6"', '8"', '10"', '12"', '14"'],
-  aCollar: ['4"', '6"', '8"', '10"', '12"', '14"', '16"', '18"'],
+  aCollar: ['4"', '6"', '8"', '10"', '12"', '14"', '16"', '18"', '20"'],
   supplyBox: ["16 x 20 x 24", "16 x 20 x 48"],
   returnBox: ["16 x 20 x 24", "16 x 20 x 48", "19 x 20 x 24", "16 x 26 x 24"],
   sheetMetal: ['48" x 96" 26ga Flat Metal', "S Cleat 10'", "Standing Lock 10'"],
@@ -149,6 +149,38 @@ const CATALOG = {
   block: ["Block 16 x 8 x 8", "Block 16 x 8 x 4", "Red Brick 2 x 4 x 6"],
   pvcAddon: ['2" PVC Pipe 10ft', '3" PVC Pipe 10ft', "Duct Wrap"],
   concentric: ['2" Concentric Kit', '3" Concentric Kit'],
+};
+
+// Ferguson part numbers, looked up by the item's clean label. Keeps the catalog
+// labels clean (and matching the duct-kit keys), while the pull sheet shows the
+// part number in bold. Items that already embed "(PART#)" are handled directly.
+const PART_NUMBERS = {
+  // Drain pans
+  "30 x 36": "SHMDP243036", "30 x 60": "SHMDP243060ND", "32 x 72": "SHMDP243272ND",
+  // Flex (supply & return share numbers)
+  '6" R8': "Q685", '8" R8': "Q885", '10" R8': "Q1085", '12" R8': "Q1285", '14" R8': "Q1485", '16" R8': "Q1685", '18" R8': "Q1885",
+  // Round duct
+  '10"': "SHMP3010S", '12"': "SHMP3012S", '14"': "SHMP2814S", '16"': "SHMP2616S", '18"': "SHMP2618S",
+  // End cap (note: 6"/8"/10"... — these keys would clash with round duct, handled per-section below)
+  // Tee
+  "12 x 12 x 12": "SHMT26121212", "14 x 14 x 14": "SHMT26141414", "16 x 16 x 16": "SHMT26161616", "18 x 18 x 18": "SHMT26181818",
+  // Sheet metal
+  '48" x 96" 26ga Flat Metal': "FSM264896", "S Cleat 10'": "SHMSCLT26120", "Standing Lock 10'": "SHSSCLTG120",
+  // Line set fittings
+  "Line Set Cover": "DIV230D4A", "Eve Penetration": "DIV230SF4", "Sidewall Penetration": "DIV230WC4", "End Piece": "DIV230DE4", "Elbow": "DIV230FB3", "Coupling": "DIV230CP4",
+};
+
+// Per-section part numbers (used where the same label means different parts in
+// different sections, e.g. a 6" round duct vs a 6" end cap vs a 6" collar).
+const PART_NUMBERS_BY_SECTION = {
+  roundDuct: { '10"': "SHMP3010S", '12"': "SHMP3012S", '14"': "SHMP2814S", '16"': "SHMP2616S", '18"': "SHMP2618S" },
+  endCap: { '6"': "SNMECNCU", '8"': "SNMECNCX", '10"': "SHMECNC10", '12"': "SHMECNC12", '14"': "SHMECNC14", '16"': "SHMECNC16" },
+  saddleCollar: { '6"': "SHMASTOU", '8"': "SHMASTOX", '10"': "SHMASTO10", '12"': "SHMASTO12" },
+  aCollar: { '4"': "SHMCLP", '6"': "SHMCLU", '8"': "SHMCLX", '10"': "SHMCL10", '12"': "SHMCL12", '14"': "SHMCL14", '16"': "SHMCL16", '18"': "SHMCL18", '20"': "SHMCL20" },
+  reducer: { '4" x 6"': "SHMRC26UP", '6" x 8"': "SHMRC26XU", '10" x 12"': "SHNRC261210", '10" x 14"': "SHNRC261410", '12" x 14"': "SHNRC261412", '12" x 16"': "SHNRC261612", '14" x 16"': "SHNRC261614", '16" x 18"': "SHNRC261816", '18" x 14"': "SHNRC261814" },
+  lineSetSizes: { '3/8" x 3/4" 30FT': "LSU383412BPE30", '3/8" x 3/4" 50FT': "LSU383412BPE50", '3/8" x 7/8" 30FT': "LSU387812BPE30", '3/8" x 7/8" 50FT': "LSU387812BPE50" },
+  pvcAddon: { '2" PVC Pipe 10ft': "P40FCPK10", '3" PVC Pipe 10ft': "P40FCPM10", "Duct Wrap": "K502867" },
+  concentric: { '2" Concentric Kit': "DIVHVENT2", '3" Concentric Kit': "DIVHVENT3" },
 };
 
 const VIDEO_CHECKLIST = {
@@ -560,6 +592,11 @@ function App() {
   const pull = useMemo(() => {
     const g = {};
     const add = (grp, item, qty = 1) => { (g[grp] = g[grp] || []).push({ item, qty }); };
+    // Append a Ferguson part number (per-section first, then global) to a size label.
+    const withPart = (sectionKey, size, label) => {
+      const pn = (PART_NUMBERS_BY_SECTION[sectionKey] && PART_NUMBERS_BY_SECTION[sectionKey][size]) || PART_NUMBERS[size];
+      return pn ? `${label} (${pn})` : label;
+    };
 
     if (jobType) {
       // equipment description echoes the job type
@@ -585,20 +622,20 @@ function App() {
     if (flags.isGas) {
       if (vent === "80") add("Venting", "B-Vent (see B-Vent job box)");
       if (vent === "90") {
-        if (pvcQty) add("Venting", `${pvcSize}" PVC Pipe 10ft`, Number(pvcQty));
-        add("Venting", `${concentric}" Concentric Kit`, Math.max(1, Number(concentricQty) || 1));
+        if (pvcQty) add("Venting", withPart("pvcAddon", `${pvcSize}" PVC Pipe 10ft`, `${pvcSize}" PVC Pipe 10ft`), Number(pvcQty));
+        add("Venting", withPart("concentric", `${concentric}" Concentric Kit`, `${concentric}" Concentric Kit`), Math.max(1, Number(concentricQty) || 1));
       }
     }
 
     if (flags.isGas) add("Gas", "Gas Fitting Job Box");
     if (flags.isGas && lpKit === "yes") add("Gas", `LP Conversion Kit — Model: ${lpKitModel || "★ MODEL NEEDED"}`, 1);
 
-    if (newLineSet === "yes") add("Line Set", `Line Set ${lineSetSize}`, 1);
+    if (newLineSet === "yes") add("Line Set", withPart("lineSetSizes", lineSetSize, `Line Set ${lineSetSize}`), 1);
 
     SECTIONS.forEach((s) => {
       const v = sel[s.key];
       if (s.mode === "single") { if (v) add(s.group, `${s.title}: ${v}`); }
-      else if (v) Object.entries(v).forEach(([item, qty]) => add(s.group, item === s.title ? s.title : `${s.title} ${item}`, qty));
+      else if (v) Object.entries(v).forEach(([item, qty]) => add(s.group, item === s.title ? withPart(s.key, item, s.title) : withPart(s.key, item, `${s.title} ${item}`), qty));
       if (s.special) (special[s.key] || []).forEach((txt) => { if (txt?.trim()) add(s.group, `${s.title} — Special ${s.key === "thermostats" ? "model" : "size"}: ${txt.trim()}`, 1); });
     });
 
