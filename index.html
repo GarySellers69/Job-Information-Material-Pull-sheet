@@ -88,7 +88,8 @@ const CATALOG = {
     "90% Furnace PVC Job Box", "B-Vent Metal Fab Job Box", "B-Vent Hart & Cooley Job Box",
     "Duct Material Job Box", "Zone System Job Box"],
   thermostats: ["ECONET RETST800SYS", "Honeywell THT2320WF4010", "Honeywell THT2320U4006",
-    "Honeywell THT1320U4002", "HW Elite PRO YTHX1200WS", "Honeywell TH8320R1003", "LENNOX S40 Touchscreen", "Carbon Monoxide Detector"],
+    "Honeywell THT1320U4002", "HW Elite PRO YTHX1200WS", "Honeywell TH8320R1003", "LENNOX S40 Touchscreen", "Carbon Monoxide Detector",
+    "ECONET ZONE CONTROL (RECTL800ZON)", "ECONET 3 ZONE CONTROL (REPNL700ZON)"],
   zoneControls: ["HARMONY 3 LENNOX LZSV", "ECONET RUUD REPNL700ZON"],
   zoneDampers: ['10"', '12"', '14"', '16"', '18"'],
   drainPans: ["22 x 6 x 8 Rail", "30 x 36", "30 x 60", "32 x 72"],
@@ -145,7 +146,15 @@ const CATALOG = {
     "75 VA Transformer (RECM50321)",
     "8 x 100ft 4 mil Plastic Sheeting Clear (JS08100)",
     "3-Pole Toggle Switch Black (LMS303DS)",
-    "9/16 x 7/16in Staple Box of 1000 (BSTCR50199161)"],
+    "9/16 x 7/16in Staple Box of 1000 (BSTCR50199161)",
+    "Thermostat Wire 18-10 (S553100407)",
+    "1-1/2in x 100ft 26ga Metal Hanger Strap (SHMHS26J100)",
+    "36in Cable Ties (PSCTN36)",
+    "50ft 14ga 4-Conductor Mini-Split Cable (S58225705M)",
+    "4in Dryer Vent Hood Brown (DRVHAB4)",
+    "4in Dryer Vent Hood White (DRVHAW4)",
+    "Goodman Outdoor Thermostat Kit (GOT1860A)",
+    "10.3oz Fireseal Sealant (FFS136)"],
   block: ["Block 16 x 8 x 8", "Block 16 x 8 x 4", "Red Brick 2 x 4 x 6"],
   pvcAddon: ['2" PVC Pipe 10ft', '3" PVC Pipe 10ft', "Duct Wrap"],
   concentric: ['2" Concentric Kit', '3" Concentric Kit'],
@@ -289,6 +298,13 @@ const ELEC_SECTIONS = [
 
 function App() {
   const [job, setJob] = useState({ jobNo: "", customer: "", address: "", city: "", state: "", zip: "", phone: "", installDate: "", notes: "" });
+  // Project Manager checklist
+  const [pm, setPm] = useState({ needElectrician: "", electricianDateSet: "", keepOldEquip: "", keepOldNote: "", videosUploaded: "" });
+  const [videoOpenSignal, setVideoOpenSignal] = useState(0);
+  const goToVideoChecklist = () => {
+    setVideoOpenSignal((n) => n + 1);
+    setTimeout(() => { const el = document.getElementById("video-checklist"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60);
+  };
   const [installers, setInstallers] = useState(["", "", "", ""]);
   const [equip, setEquip] = useState({ brand: "", orderDate: "", delivery: "", pickup: "" });
 
@@ -393,7 +409,7 @@ function App() {
   /* ---------------- save / load progress ---------------- */
   const collectData = () => ({
     _format: "job-pull-sheet-v1",
-    job, installers, equip, portables, portHeaters, portAC,
+    job, pm, installers, equip, portables, portHeaters, portAC,
     jobType, location, vent, pvcSize, pvcQty, concentric, concentricQty,
     atticLadder, interiorAccess, extLadderNeed, extLadder,
     newLineSet, lineSetSize, lpKit, lpKitModel,
@@ -404,6 +420,7 @@ function App() {
   const applyData = (d) => {
     if (!d || d._format !== "job-pull-sheet-v1") return false;
     d.job && setJob(d.job);
+    d.pm && setPm(d.pm);
     d.installers && setInstallers(d.installers);
     d.equip && setEquip(d.equip);
     setPortables(d.portables || ""); setPortHeaters(d.portHeaters || ""); setPortAC(d.portAC || "");
@@ -460,7 +477,8 @@ function App() {
   // Clear everything back to a fresh, blank job.
   const resetForm = () => {
     if (!window.confirm("Clear this sheet and start a new job? Anything not saved will be lost.")) return;
-    setJob({ jobNo: "", customer: "", address: "", city: "", zip: "", phone: "", installDate: "", notes: "" });
+    setJob({ jobNo: "", customer: "", address: "", city: "", state: "", zip: "", phone: "", installDate: "", notes: "" });
+    setPm({ needElectrician: "", electricianDateSet: "", keepOldEquip: "", keepOldNote: "", videosUploaded: "" });
     setInstallers(["", "", "", ""]);
     setEquip({ brand: "", orderDate: "", delivery: "", pickup: "" });
     setPortables(""); setPortHeaters(""); setPortAC("");
@@ -778,7 +796,34 @@ function App() {
               ))}
             </Row>
             <div style={S.subBox}>
-              <Field l="Any portable heaters or portable A/C units to pick up?">
+              <Field l="Does this job need an electrician to run a new circuit?">
+                <Pills v={pm.needElectrician} set={(v) => setPm({ ...pm, needElectrician: pm.needElectrician === v ? "" : v })} opts={["Yes", "No"]} />
+              </Field>
+              {pm.needElectrician === "Yes" && (
+                <Field l="Did you call and set the install date with the electrical department?">
+                  <Pills v={pm.electricianDateSet} set={(v) => setPm({ ...pm, electricianDateSet: pm.electricianDateSet === v ? "" : v })} opts={["Yes", "No"]} />
+                </Field>
+              )}
+              <Field l="Does the homeowner want to keep any of the old equipment?">
+                <Pills v={pm.keepOldEquip} set={(v) => setPm({ ...pm, keepOldEquip: pm.keepOldEquip === v ? "" : v })} opts={["Yes", "No"]} />
+              </Field>
+              {pm.keepOldEquip === "Yes" && (
+                <Field l="What does the homeowner want to keep?">
+                  <input style={S.in} value={pm.keepOldNote} onChange={(e) => setPm({ ...pm, keepOldNote: e.target.value })} placeholder="e.g. old condenser, copper line set" />
+                </Field>
+              )}
+              <Field l="Did you upload your videos for this job?">
+                <Pills v={pm.videosUploaded} set={(v) => setPm({ ...pm, videosUploaded: pm.videosUploaded === v ? "" : v })} opts={["Yes", "No"]} />
+              </Field>
+              {pm.videosUploaded === "Yes" && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={S.note}>Check off what you uploaded to ServiceTitan.</div>
+                  <button style={S.stampBtn} onClick={goToVideoChecklist}>↓ Go to video checklist (Section 9)</button>
+                </div>
+              )}
+            </div>
+            <div style={S.subBox}>
+              <Field l="Did you leave any portable heaters or A/C units for the installers to pick up?">
                 <Pills v={portables} set={setPortables} opts={[{ v: "yes", l: "Yes" }, { v: "no", l: "No" }]} />
               </Field>
               {portables === "yes" && (
@@ -1099,7 +1144,7 @@ function App() {
             </Block>
           ))}
 
-          <Block n="9" title="What's Needed in Video" collapsible>
+          <Block n="9" title="What's Needed in Video" collapsible openSignal={videoOpenSignal} id="video-checklist">
             {Object.entries(VIDEO_CHECKLIST).map(([cat, items]) => (
               <div key={cat} style={S.secWrap}>
                 <div style={S.secTitle}>{cat}</div>
@@ -1219,6 +1264,17 @@ function App() {
             </>
           )}
 
+          {(pm.needElectrician || pm.keepOldEquip || pm.videosUploaded) && (
+            <>
+              <div style={{ ...S.secLabel, marginTop: 18 }}>▣ PROJECT MANAGER</div>
+              <div style={S.spec}>
+                {pm.needElectrician && <SL k="Electrician for new circuit" v={pm.needElectrician + (pm.needElectrician === "Yes" ? ` · install date set: ${pm.electricianDateSet || "?"}` : "")} />}
+                {pm.keepOldEquip && <SL k="Keep old equipment" v={pm.keepOldEquip + (pm.keepOldEquip === "Yes" && pm.keepOldNote ? `: ${pm.keepOldNote}` : "")} />}
+                {pm.videosUploaded && <SL k="Videos uploaded to ServiceTitan" v={pm.videosUploaded} />}
+              </div>
+            </>
+          )}
+
           {job.notes && (<><div style={{ ...S.secLabel, marginTop: 18 }}>▣ JOB NOTES</div><div style={S.notesBox}>{job.notes}</div></>)}
         </section>
       </div>
@@ -1227,10 +1283,11 @@ function App() {
 }
 
 /* ---------- components ---------- */
-const Block = ({ n, title, children, collapsible }) => {
+const Block = ({ n, title, children, collapsible, openSignal, id }) => {
   const [open, setOpen] = useState(!collapsible);
+  useEffect(() => { if (openSignal) setOpen(true); }, [openSignal]);
   return (
-    <div style={S.block}>
+    <div style={S.block} id={id}>
       <div style={{ ...S.bHead, cursor: collapsible ? "pointer" : "default" }} onClick={collapsible ? () => setOpen(!open) : undefined}>
         <span style={S.bNum}>{n}</span>{title}{collapsible && <span style={S.caret}>{open ? "▾" : "▸"}</span>}
       </div>
