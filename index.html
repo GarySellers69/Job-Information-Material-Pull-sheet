@@ -75,9 +75,11 @@ const PICKUP_LOCATIONS = [
   "Ferguson Raleigh Yankers Rd", "Ferguson Raleigh Rogers Ln", "Ferguson Fayetteville Winslow St.",
 ];
 const MECHANICS = ["Travis Lloyd", "Jeremy Paul", "Shawn Cox", "Elijah Thomas", "John Austin",
-  "Aiden Hillard", "Chris Archer", "Tyrell McCray", "Justin Moxley", "Demarqus Moore", "Hesham Gamaan"];
+  "Aiden Hillard", "Chris Archer", "Tyrell McCray", "Justin Moxley", "Demarqus Moore", "Hesham Gamaan",
+  "Damian Bronson", "Raymundo Velasquez"];
 const HELPERS = ["Quentin McClain", "Taylor Robinson", "Austin Hunter", "Shayne Mallory", "Gabe Blanton",
-  "Parker Belch", "Sean Thompson", "Gabriel deBeus", "Timothy Omelas", "Darius Jacobs", "Cooper Creel", "Chandler Parker"];
+  "Parker Belch", "Sean Thompson", "Gabriel deBeus", "Timothy Omelas", "Darius Jacobs", "Cooper Creel", "Chandler Parker",
+  "Tyrone Robinson", "Ray Bland", "Cristian Benitez-Serrano"];
 const ALL_INSTALLERS = [...MECHANICS, ...HELPERS];
 
 const INTERIOR_ACCESS = ["6ft Ladder", "8ft Ladder", "Pull-Down Staircase", "Walk-in Attic"];
@@ -312,6 +314,7 @@ function App() {
   const [portables, setPortables] = useState("");
   const [portHeaters, setPortHeaters] = useState("");
   const [portAC, setPortAC] = useState("");
+  const [portSource, setPortSource] = useState(""); // "Warehouse pull" or "Pick up from job"
 
   const [jobType, setJobType] = useState("");
   const [location, setLocation] = useState("");
@@ -409,7 +412,7 @@ function App() {
   /* ---------------- save / load progress ---------------- */
   const collectData = () => ({
     _format: "job-pull-sheet-v1",
-    job, pm, installers, equip, portables, portHeaters, portAC,
+    job, pm, installers, equip, portables, portHeaters, portAC, portSource,
     jobType, location, vent, pvcSize, pvcQty, concentric, concentricQty,
     atticLadder, interiorAccess, extLadderNeed, extLadder,
     newLineSet, lineSetSize, lpKit, lpKitModel,
@@ -423,7 +426,7 @@ function App() {
     d.pm && setPm(d.pm);
     d.installers && setInstallers(d.installers);
     d.equip && setEquip(d.equip);
-    setPortables(d.portables || ""); setPortHeaters(d.portHeaters || ""); setPortAC(d.portAC || "");
+    setPortables(d.portables || ""); setPortHeaters(d.portHeaters || ""); setPortAC(d.portAC || ""); setPortSource(d.portSource || "");
     setJobType(d.jobType || ""); setLocation(d.location || "");
     setVent(d.vent || ""); setPvcSize(d.pvcSize || "2"); setPvcQty(d.pvcQty || "");
     setConcentric(d.concentric || "2"); setConcentricQty(d.concentricQty || "1");
@@ -481,7 +484,7 @@ function App() {
     setPm({ needElectrician: "", electricianDateSet: "", keepOldEquip: "", keepOldNote: "", videosUploaded: "" });
     setInstallers(["", "", "", ""]);
     setEquip({ brand: "", orderDate: "", delivery: "", pickup: "" });
-    setPortables(""); setPortHeaters(""); setPortAC("");
+    setPortables(""); setPortHeaters(""); setPortAC(""); setPortSource("");
     setJobType(""); setLocation("");
     setVent(""); setPvcSize("2"); setPvcQty("");
     setConcentric("2"); setConcentricQty("1");
@@ -633,8 +636,9 @@ function App() {
     }
 
     if (portables === "yes") {
-      if (Number(portHeaters) > 0) add("Portables", "Portable Heater", Number(portHeaters));
-      if (Number(portAC) > 0) add("Portables", "Portable A/C Unit", Number(portAC));
+      const tag = portSource === "Pick up from job" ? " — crew picks up from job (do NOT pull)" : "";
+      if (Number(portHeaters) > 0) add("Portables", `Portable Heater${tag}`, Number(portHeaters));
+      if (Number(portAC) > 0) add("Portables", `Portable A/C Unit${tag}`, Number(portAC));
     }
 
     [...auto].forEach((b) => add("Job Boxes", b));
@@ -691,7 +695,7 @@ function App() {
     if (isAttic && atticLadder === "yes" && interiorAccess && /Ladder/.test(interiorAccess)) add("Access / Tools", interiorAccess, 1);
 
     return PULL_ORDER.filter((k) => g[k]?.length).map((k) => ({ group: k, items: g[k] }));
-  }, [jobType, equip.brand, portables, portHeaters, portAC, auto, extraBoxes, flags, vent, pvcSize, pvcQty, concentric, concentricQty, lpKit, lpKitModel,
+  }, [jobType, equip.brand, portables, portHeaters, portAC, portSource, auto, extraBoxes, flags, vent, pvcSize, pvcQty, concentric, concentricQty, lpKit, lpKitModel,
     newLineSet, lineSetSize, sel, special, supplyG, supplyGSpecial, zoneActive, zoneControl, zoneDampers, damperModel, discIndoor, discOutdoor, elecBrands, elec, extLadderNeed, extLadder, isAttic, atticLadder, interiorAccess]);
 
   const totalLines = pull.reduce((n, gr) => n + gr.items.length, 0);
@@ -827,10 +831,15 @@ function App() {
                 <Pills v={portables} set={setPortables} opts={[{ v: "yes", l: "Yes" }, { v: "no", l: "No" }]} />
               </Field>
               {portables === "yes" && (
-                <Row>
-                  <Field l="Portable Heaters QTY"><input style={S.in} type="number" min="0" value={portHeaters} onChange={(e) => setPortHeaters(e.target.value)} /></Field>
-                  <Field l="Portable A/C QTY"><input style={S.in} type="number" min="0" value={portAC} onChange={(e) => setPortAC(e.target.value)} /></Field>
-                </Row>
+                <>
+                  <Row>
+                    <Field l="Portable Heaters QTY"><input style={S.in} type="number" min="0" value={portHeaters} onChange={(e) => setPortHeaters(e.target.value)} /></Field>
+                    <Field l="Portable A/C QTY"><input style={S.in} type="number" min="0" value={portAC} onChange={(e) => setPortAC(e.target.value)} /></Field>
+                  </Row>
+                  <Field l="Where do the portables come from?">
+                    <Pills v={portSource} set={(v) => setPortSource(portSource === v ? "" : v)} opts={["Warehouse pull", "Pick up from job"]} />
+                  </Field>
+                </>
               )}
             </div>
             <Field l="Job Notes"><textarea style={{ ...S.in, minHeight: 50, resize: "vertical" }} value={job.notes} onChange={(e) => setJob({ ...job, notes: e.target.value })} /></Field>
@@ -1179,7 +1188,9 @@ function App() {
                 {job.address || "—"}{job.city ? `, ${job.city}` : ""}{job.state ? `, ${job.state}` : ""} {job.zip}<br />
                 {jobType || "no job type"} · {location || "no location"}<br />
                 Install {job.installDate || "—"} · {equip.brand || "—"} · {totalLines} line items<br />
-                Crew: {installers.filter(Boolean).join(", ") || "—"}
+                Crew: {installers.filter(Boolean).length
+                  ? installers.filter(Boolean).map((nm, i) => <span key={i} style={S.crewName}>{nm}</span>)
+                  : "—"}
                 {handoff && <><br /><span style={S.handoffStamp}>🕒 Handed to warehouse: {handoff}</span></>}
               </div>
             </div>
@@ -1247,7 +1258,8 @@ function App() {
               const parts = [];
               if (Number(portHeaters) > 0) parts.push(`${portHeaters} Portable Heater${Number(portHeaters) > 1 ? "s" : ""}`);
               if (Number(portAC) > 0) parts.push(`${portAC} Portable A/C${Number(portAC) > 1 ? " units" : ""}`);
-              return parts.length ? "Pick up: " + parts.join(", ") : "Yes (qty?)";
+              const where = portSource ? ` — ${portSource}` : "";
+              return parts.length ? parts.join(", ") + where : "Yes (qty?)";
             })()} />
             <SL k="Delivery" v={equip.delivery ? equip.delivery + (equip.pickup ? ` (${equip.pickup})` : "") : "—"} />
           </div>
@@ -1423,6 +1435,7 @@ const S = {
   clearStamp: { fontFamily: "'Oswald',sans-serif", fontSize: 12, padding: "9px 12px", background: "#fff", color: ink, border: `1px solid ${line}`, borderRadius: 3, cursor: "pointer", marginTop: 10, marginLeft: 8 },
   stampShown: { fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: "#3a7a3a", marginTop: 10, fontWeight: 700 },
   handoffStamp: { color: "#1a5c1a", fontWeight: 700 },
+  crewName: { fontWeight: 700, background: "#ffe600", color: "#000", padding: "1px 6px", borderRadius: 3, marginRight: 6, display: "inline-block" },
   msNote: { fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: muted, marginBottom: 10, lineHeight: 1.5 },
   msUnit: { border: `1px solid ${line}`, borderRadius: 4, padding: "10px 12px", marginBottom: 10 },
   msUnitName: { fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 },
