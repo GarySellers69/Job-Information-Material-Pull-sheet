@@ -74,13 +74,13 @@ const PICKUP_LOCATIONS = [
   "Ferguson Durham", "Ferguson Garner", "Ferguson Aberdeen",
   "Ferguson Raleigh Yankers Rd", "Ferguson Raleigh Rogers Ln", "Ferguson Fayetteville Winslow St.",
 ];
-const MECHANICS = ["Travis Lloyd", "Jeremy Paul", "Shawn Cox", "Elijah Thomas", "John Austin",
+const DEFAULT_MECHANICS = ["Travis Lloyd", "Jeremy Paul", "Shawn Cox", "Elijah Thomas", "John Austin",
   "Aiden Hillard", "Chris Archer", "Tyrell McCray", "Justin Moxley", "Demarqus Moore", "Hesham Gamaan",
   "Damian Bronson", "Raymundo Velasquez"];
-const HELPERS = ["Quentin McClain", "Taylor Robinson", "Austin Hunter", "Shayne Mallory", "Gabe Blanton",
+const DEFAULT_HELPERS = ["Quentin McClain", "Taylor Robinson", "Austin Hunter", "Shayne Mallory", "Gabe Blanton",
   "Parker Belch", "Sean Thompson", "Gabriel deBeus", "Timothy Omelas", "Darius Jacobs", "Cooper Creel", "Chandler Parker",
   "Tyrone Robinson", "Ray Bland", "Cristian Benitez-Serrano"];
-const ALL_INSTALLERS = [...MECHANICS, ...HELPERS];
+const ROSTER_KEY = "pull-sheet-roster-v1";
 
 const INTERIOR_ACCESS = ["6ft Ladder", "8ft Ladder", "Pull-Down Staircase", "Walk-in Attic"];
 const EXT_LADDERS = ["24ft Ladder", "28ft Ladder", "32ft Ladder", "40ft Ladder"];
@@ -283,7 +283,7 @@ const SECTIONS = [
   { key: "iaq", title: "IAQ", cat: "iaq", mode: "multi", group: "Air Quality", special: true },
   { key: "mediaCleaner", title: "Media Air Cleaner", cat: "mediaCleaner", mode: "multi", group: "Air Quality", special: true },
   { key: "lineSetFittings", title: "Line Set Cover & Fittings", cat: "lineSetFittings", mode: "multi", group: "Line Set" },
-  { key: "misc", title: "Misc Material", cat: "misc", mode: "multi", group: "Misc", special: true },
+  { key: "misc", title: "Misc Material", cat: "misc", mode: "multi", group: "Misc", special: true, specialCount: 4 },
   { key: "block", title: "Block / Brick", cat: "block", mode: "multi", group: "Misc", special: true },
 ];
 
@@ -298,57 +298,233 @@ const ELEC_SECTIONS = [
   { key: "surge", title: "Surge Protector", cat: "surge" },
 ];
 
+// Normalize floor grill qty to { brown, white } even if older saved data stored it as a plain number.
+const normFloor = (f) => (f && typeof f === "object") ? { brown: f.brown || 0, white: f.white || 0 } : { brown: f || 0, white: 0 };
+
+// Blank starting state for one system (one unit / one install crew) within a job.
+const makeBlankSystem = (label) => ({
+  label: label || "System 1",
+  pm: { needElectrician: "", electricianDateSet: "", keepOldEquip: "", keepOldNote: "", videosUploaded: "" },
+  installers: ["", "", "", ""],
+  equip: { brand: "", orderDate: "", delivery: "", pickup: "" },
+  portables: "", portHeaters: "", portAC: "", portSource: "",
+  jobType: "", location: "",
+  vent: "", pvcQty: { "2": "", "3": "" }, concentric: "2", concentricQty: "1",
+  atticLadder: "", interiorAccess: "", extLadderNeed: "", extLadder: "",
+  newLineSet: "", lineSetSize: CATALOG.lineSetSizes[1],
+  lpKit: "", lpKitModel: "",
+  discIndoor: "", discOutdoor: "",
+  elecBrands: ["", ""], elec: {},
+  supplyG: {}, supplyGSpecial: ["", ""],
+  ductWizard: null, lastKit: null,
+  extraBoxes: new Set(),
+  zoneControl: "", zoneDampers: {}, damperModel: "",
+  sel: {}, special: {},
+  video: new Set(),
+  handoff: "",
+  notes: "",
+  ductDefaulted: false,
+});
+
+// Build the warehouse pull list for a single system (pure function of that system's data).
+function buildPull(sys) {
+  const flags = deriveFlags(sys.jobType || "");
+  const auto = autoBoxesFor(sys.jobType || "");
+  if (/Gas Furnace|Furnace Only|Gas Pack/.test(sys.jobType || "") && sys.vent === "90") auto.add("90% Furnace PVC Job Box");
+  const zoneActive = auto.has("Zone System Job Box") || sys.extraBoxes.has("Zone System Job Box");
+  const isAttic = /Attic/.test(sys.location || "");
+
+  const g = {};
+  const add = (grp, item, qty = 1) => { (g[grp] = g[grp] || []).push({ item, qty }); };
+  const withPart = (sectionKey, size, label) => {
+    const pn = (PART_NUMBERS_BY_SECTION[sectionKey] && PART_NUMBERS_BY_SECTION[sectionKey][size]) || PART_NUMBERS[size];
+    return pn ? `${label} (${pn})` : label;
+  };
+
+  if (sys.jobType) {
+    add("Equipment", sys.jobType);
+    if (sys.equip.brand) add("Equipment", `Brand: ${sys.equip.brand}`);
+  }
+
+  if (sys.portables === "yes") {
+    const tag = sys.portSource === "Pick up from job" ? " — crew picks up from job (do NOT pull)" : "";
+    if (Number(sys.portHeaters) > 0) add("Portables", `Portable Heater${tag}`, Number(sys.portHeaters));
+    if (Number(sys.portAC) > 0) add("Portables", `Portable A/C Unit${tag}`, Number(sys.portAC));
+  }
+
+  [...auto].forEach((b) => add("Job Boxes", b));
+  [...sys.extraBoxes].forEach((b) => { if (!auto.has(b)) add("Job Boxes", b); });
+
+  if (zoneActive) {
+    if (sys.zoneControl) add("Controls", `Zone Control: ${sys.zoneControl}`);
+    if (sys.damperModel) add("Controls", `Damper Model: ${sys.damperModel}`);
+    Object.entries(sys.zoneDampers).forEach(([size, q]) => add("Controls", `Zone Damper ${size}`, q));
+  }
+
+  if (flags.isGas) {
+    if (sys.vent === "80") add("Venting", "B-Vent (see B-Vent job box)");
+    if (sys.vent === "90") {
+      ["2", "3"].forEach((size) => {
+        const q = Number(sys.pvcQty[size]) || 0;
+        if (q > 0) add("Venting", withPart("pvcAddon", `${size}" PVC Pipe 10ft`, `${size}" PVC Pipe 10ft`), q);
+      });
+      if (sys.concentric !== "none") {
+        add("Venting", withPart("concentric", `${sys.concentric}" Concentric Kit`, `${sys.concentric}" Concentric Kit`), Math.max(1, Number(sys.concentricQty) || 1));
+      }
+    }
+  }
+
+  if (flags.isGas) add("Gas", "Gas Fitting Job Box");
+  if (flags.isGas && sys.lpKit === "yes") add("Gas", `LP Conversion Kit — Model: ${sys.lpKitModel || "★ MODEL NEEDED"}`, 1);
+
+  if (sys.newLineSet === "yes") add("Line Set", withPart("lineSetSizes", sys.lineSetSize, `Line Set ${sys.lineSetSize}`), 1);
+
+  SECTIONS.forEach((s) => {
+    const v = sys.sel[s.key];
+    if (s.mode === "single") { if (v) add(s.group, withPart(s.key, v, `${s.title}: ${v}`)); }
+    else if (v) Object.entries(v).forEach(([item, qty]) => add(s.group, item === s.title ? withPart(s.key, item, s.title) : withPart(s.key, item, `${s.title} ${item}`), qty));
+    if (s.special) (sys.special[s.key] || []).forEach((txt) => { if (txt?.trim()) add(s.group, `${s.title} — Special ${s.key === "thermostats" ? "model" : "size"}: ${txt.trim()}`, 1); });
+  });
+
+  Object.entries(sys.supplyG).forEach(([size, qs]) => {
+    const floor = normFloor(qs.floor);
+    if (floor.brown > 0) add("Air Distribution", `Supply Grill ${size} — Floor (Brown)`, floor.brown);
+    if (floor.white > 0) add("Air Distribution", `Supply Grill ${size} — Floor (White)`, floor.white);
+    if (qs.ceiling > 0) add("Air Distribution", `Supply Grill ${size} — Ceiling`, qs.ceiling);
+  });
+  sys.supplyGSpecial.forEach((txt) => { if (txt?.trim()) add("Air Distribution", `Supply Grill — Special size: ${txt.trim()}`, 1); });
+
+  if (sys.discIndoor && Number(sys.discIndoor) > 0) add("Electrical", "100 Amp Square D Homeline 6 Spaces 12 Circuit Main Lug Load Center — Indoor", Number(sys.discIndoor));
+  if (sys.discOutdoor && Number(sys.discOutdoor) > 0) add("Electrical", "100 Amp Square D Homeline 6 Spaces 12 Circuit Main Lug Load Center — Outdoor", Number(sys.discOutdoor));
+
+  sys.elecBrands.forEach((b, i) => { if (b) add("Electrical", `Breaker Brand${sys.elecBrands.filter(Boolean).length > 1 ? ` ${i + 1}` : ""}: ${b}`); });
+  ELEC_SECTIONS.forEach((s) =>
+    s.cat && CATALOG[s.cat].forEach((item) => {
+      const q = sys.elec[`${s.title}|${item}`];
+      const brandSuffix = s.key === "surge";
+      if (q?.b1 > 0) add("Electrical", withPart(s.key, item, `${s.title} ${item}`) + (brandSuffix ? "" : ` — ${sys.elecBrands[0] || "Brand 1"}`), q.b1);
+      if (q?.b2 > 0) add("Electrical", withPart(s.key, item, `${s.title} ${item}`) + (brandSuffix ? "" : ` — ${sys.elecBrands[1] || "Brand 2"}`), q.b2);
+    })
+  );
+
+  if (sys.extLadderNeed === "yes" && sys.extLadder) add("Access / Tools", sys.extLadder, 1);
+  if (isAttic && sys.atticLadder === "yes" && sys.interiorAccess && /Ladder/.test(sys.interiorAccess)) add("Access / Tools", sys.interiorAccess, 1);
+
+  return PULL_ORDER.filter((k) => g[k]?.length).map((k) => ({ group: k, items: g[k] }));
+}
+
 function App() {
-  const [job, setJob] = useState({ jobNo: "", customer: "", address: "", city: "", state: "", zip: "", phone: "", installDate: "", notes: "" });
-  // Project Manager checklist
-  const [pm, setPm] = useState({ needElectrician: "", electricianDateSet: "", keepOldEquip: "", keepOldNote: "", videosUploaded: "" });
+  const [job, setJob] = useState({ jobNo: "", customer: "", address: "", city: "", state: "", zip: "", phone: "", installDate: "" });
+
+  // In-page confirm dialog. Browser-native window.confirm()/alert() get silently
+  // blocked in sandboxed preview environments, so destructive/blocking actions
+  // route through this instead of relying on them.
+  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm } | { message, onConfirm: null } for a plain notice
+  const askConfirm = (message, onConfirm) => setConfirmDialog({ message, onConfirm });
+
+  // ---- Multiple systems (e.g. 1st Floor unit / 2nd Floor unit) within one job ----
+  const [systems, setSystemsRaw] = useState(() => [makeBlankSystem("System 1")]);
+  const [activeIdx, setActiveIdxRaw] = useState(0);
+  const activeSystem = systems[Math.min(activeIdx, systems.length - 1)];
+
+  const updateSystemAt = (idx, updater) => setSystemsRaw((prev) => prev.map((s, i) => (i === idx ? (typeof updater === "function" ? updater(s) : updater) : s)));
+  // Gives every per-system field a familiar [value, setValue] pair, backed by the active system.
+  const sysState = (key) => [
+    activeSystem[key],
+    (updater) => updateSystemAt(activeIdx, (s) => ({ ...s, [key]: typeof updater === "function" ? updater(s[key]) : updater })),
+  ];
+
+  const addSystem = () => {
+    const newLabel = `System ${systems.length + 1}`;
+    setSystemsRaw((prev) => [...prev, makeBlankSystem(newLabel)]);
+    setActiveIdxRaw(systems.length);
+  };
+  const removeSystem = (idx) => {
+    if (systems.length <= 1) { askConfirm("At least one system is required.", null); return; }
+    const label = systems[idx].label || `System ${idx + 1}`;
+    askConfirm(`Remove "${label}"? This deletes everything entered for that system.`, () => {
+      setSystemsRaw((prev) => prev.filter((_, i) => i !== idx));
+      setActiveIdxRaw((prev) => {
+        if (idx < prev) return prev - 1;
+        if (idx === prev) return Math.max(0, prev - 1);
+        return prev;
+      });
+    });
+  };
+
+  // Project Manager checklist (per system)
+  const [pm, setPm] = sysState("pm");
   const [videoOpenSignal, setVideoOpenSignal] = useState(0);
   const goToVideoChecklist = () => {
     setVideoOpenSignal((n) => n + 1);
     setTimeout(() => { const el = document.getElementById("video-checklist"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60);
   };
-  const [installers, setInstallers] = useState(["", "", "", ""]);
-  const [equip, setEquip] = useState({ brand: "", orderDate: "", delivery: "", pickup: "" });
+  const [installers, setInstallers] = sysState("installers");
+  const [equip, setEquip] = sysState("equip");
 
-  // portable loaner units to pick up
-  const [portables, setPortables] = useState("");
-  const [portHeaters, setPortHeaters] = useState("");
-  const [portAC, setPortAC] = useState("");
-  const [portSource, setPortSource] = useState(""); // "Warehouse pull" or "Pick up from job"
+  // Installer roster (mechanics & helpers). Loaded from this browser's local
+  // storage so additions/removals persist here without editing the app code.
+  const loadRoster = () => {
+    try {
+      const raw = localStorage.getItem(ROSTER_KEY);
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (Array.isArray(d.mechanics) && Array.isArray(d.helpers)) return d;
+      }
+    } catch { /* localStorage unavailable — fall back to defaults */ }
+    return { mechanics: DEFAULT_MECHANICS, helpers: DEFAULT_HELPERS };
+  };
+  const [mechanics, setMechanics] = useState(() => loadRoster().mechanics);
+  const [helpers, setHelpers] = useState(() => loadRoster().helpers);
+  useEffect(() => {
+    try { localStorage.setItem(ROSTER_KEY, JSON.stringify({ mechanics, helpers })); } catch { /* ignore */ }
+  }, [mechanics, helpers]);
+  const ALL_INSTALLERS = useMemo(() => [...mechanics, ...helpers], [mechanics, helpers]);
+  const addRosterName = (list, setList, name) => {
+    const n = name.trim();
+    if (!n || list.includes(n)) return;
+    setList([...list, n]);
+  };
+  const removeRosterName = (list, setList, name) => setList(list.filter((x) => x !== name));
 
-  const [jobType, setJobType] = useState("");
-  const [location, setLocation] = useState("");
+  // portable loaner units to pick up (per system)
+  const [portables, setPortables] = sysState("portables");
+  const [portHeaters, setPortHeaters] = sysState("portHeaters");
+  const [portAC, setPortAC] = sysState("portAC");
+  const [portSource, setPortSource] = sysState("portSource"); // "Warehouse pull" or "Pick up from job"
+
+  const [jobType, setJobType] = sysState("jobType");
+  const [location, setLocation] = sysState("location");
   const flags = jobType ? deriveFlags(jobType) : {};
   const isAttic = /Attic/.test(location);
 
-  // venting (gas only)
-  const [vent, setVent] = useState("");      // "80" | "90"
-  const [pvcSize, setPvcSize] = useState("2");
-  const [pvcQty, setPvcQty] = useState("");
-  const [concentric, setConcentric] = useState("2");
-  const [concentricQty, setConcentricQty] = useState("1");
+  // venting (gas only) — per system
+  const [vent, setVent] = sysState("vent");      // "80" | "90"
+  const [pvcQty, setPvcQty] = sysState("pvcQty"); // qty per PVC pipe size
+  const [concentric, setConcentric] = sysState("concentric");          // "2" | "3" | "none"
+  const [concentricQty, setConcentricQty] = sysState("concentricQty");
 
-  // ladder
-  const [atticLadder, setAtticLadder] = useState("");   // need ladder in attic?
-  const [interiorAccess, setInteriorAccess] = useState("");
-  const [extLadderNeed, setExtLadderNeed] = useState("");
-  const [extLadder, setExtLadder] = useState("");
+  // ladder (per system)
+  const [atticLadder, setAtticLadder] = sysState("atticLadder");   // need ladder in attic?
+  const [interiorAccess, setInteriorAccess] = sysState("interiorAccess");
+  const [extLadderNeed, setExtLadderNeed] = sysState("extLadderNeed");
+  const [extLadder, setExtLadder] = sysState("extLadder");
 
-  // line set
-  const [newLineSet, setNewLineSet] = useState("");
-  const [lineSetSize, setLineSetSize] = useState(CATALOG.lineSetSizes[1]);
+  // line set (per system)
+  const [newLineSet, setNewLineSet] = sysState("newLineSet");
+  const [lineSetSize, setLineSetSize] = sysState("lineSetSize");
 
-  // gas — LP conversion kit
-  const [lpKit, setLpKit] = useState("");
-  const [lpKitModel, setLpKitModel] = useState("");
+  // gas — LP conversion kit (per system)
+  const [lpKit, setLpKit] = sysState("lpKit");
+  const [lpKitModel, setLpKitModel] = sysState("lpKitModel");
 
-  // disconnect
-  const [discIndoor, setDiscIndoor] = useState("");
-  const [discOutdoor, setDiscOutdoor] = useState("");
+  // disconnect (per system)
+  const [discIndoor, setDiscIndoor] = sysState("discIndoor");
+  const [discOutdoor, setDiscOutdoor] = sysState("discOutdoor");
 
-  // electrical: brand(s) + per-item {in,out} quantities
-  const [elecBrands, setElecBrands] = useState(["", ""]);
-  const [elec, setElec] = useState({}); // { "Title|item": { b1: n, b2: n } }
+  // electrical: brand(s) + per-item {in,out} quantities (per system)
+  const [elecBrands, setElecBrands] = sysState("elecBrands");
+  const [elec, setElec] = sysState("elec"); // { "Title|item": { b1: n, b2: n } }
   const bumpElec = (key, side, delta) => setElec((p) => {
     const cur = { ...(p[key] || { b1: 0, b2: 0 }) };
     cur[side] = Math.max(0, (cur[side] || 0) + delta);
@@ -356,42 +532,48 @@ function App() {
     return { ...p, [key]: cur };
   });
 
-  // Supply grills: per size, separate Floor and Ceiling quantities
-  const [supplyG, setSupplyG] = useState({}); // { size: { floor: n, ceiling: n } }
+  // Supply grills: per size, separate Floor (split Brown/White) and Ceiling quantities (per system)
+  const [supplyG, setSupplyG] = sysState("supplyG"); // { size: { floor: { brown: n, white: n }, ceiling: n } }
   const bumpSupplyG = (size, side, delta) => setSupplyG((p) => {
-    const cur = { ...(p[size] || { floor: 0, ceiling: 0 }) };
-    cur[side] = Math.max(0, (cur[side] || 0) + delta);
-    if (!cur.floor && !cur.ceiling) { const n = { ...p }; delete n[size]; return n; }
+    const prev = p[size] || {};
+    const cur = { floor: normFloor(prev.floor), ceiling: prev.ceiling || 0 };
+    if (side === "ceiling") {
+      cur.ceiling = Math.max(0, cur.ceiling + delta);
+    } else {
+      const colorKey = side === "floorBrown" ? "brown" : "white";
+      cur.floor[colorKey] = Math.max(0, (cur.floor[colorKey] || 0) + delta);
+    }
+    if (!cur.floor.brown && !cur.floor.white && !cur.ceiling) { const n = { ...p }; delete n[size]; return n; }
     return { ...p, [size]: cur };
   });
-  const [supplyGSpecial, setSupplyGSpecial] = useState(["", ""]);
+  const [supplyGSpecial, setSupplyGSpecial] = sysState("supplyGSpecial");
 
-  // Pre-made duct system wizard
-  const [ductWizard, setDuctWizard] = useState(null); // null or { ton, step data }
-  const [lastKit, setLastKit] = useState(null); // remembers what the last kit added, for undo
+  // Pre-made duct system wizard (per system)
+  const [ductWizard, setDuctWizard] = sysState("ductWizard"); // null or { ton, step data }
+  const [lastKit, setLastKit] = sysState("lastKit"); // remembers what the last kit added, for undo
 
   const auto = useMemo(() => {
     const s = autoBoxesFor(jobType);
     if (/Gas Furnace|Furnace Only|Gas Pack/.test(jobType) && vent === "90") s.add("90% Furnace PVC Job Box");
     return s;
   }, [jobType, vent]);
-  const [extraBoxes, setExtraBoxes] = useState(new Set());
+  const [extraBoxes, setExtraBoxes] = sysState("extraBoxes");
   // Zone workflow is active when the Zone System Job Box is pulled (auto or manually checked)
   const zoneActive = auto.has("Zone System Job Box") || extraBoxes.has("Zone System Job Box");
   // Duct Material Job Box active (auto or manually checked) → auto-adds 1 Duct Wrap
   const ductBoxActive = auto.has("Duct Material Job Box") || extraBoxes.has("Duct Material Job Box");
-  const [zoneControl, setZoneControl] = useState("");
-  const [zoneDampers, setZoneDampers] = useState({}); // { size: qty }
-  const [damperModel, setDamperModel] = useState("");
+  const [zoneControl, setZoneControl] = sysState("zoneControl");
+  const [zoneDampers, setZoneDampers] = sysState("zoneDampers"); // { size: qty }
+  const [damperModel, setDamperModel] = sysState("damperModel");
   const setDamperQty = (size, q) => setZoneDampers((p) => {
     const cur = { ...p };
     if (q <= 0) delete cur[size]; else cur[size] = q;
     return cur;
   });
 
-  const [sel, setSel] = useState({});
+  const [sel, setSel] = sysState("sel");
   // free-text special sizes for boot sections, keyed by section key
-  const [special, setSpecial] = useState({});
+  const [special, setSpecial] = sysState("special");
   const setSingle = (k, v) => setSel((p) => ({ ...p, [k]: p[k] === v ? "" : v }));
   const setQty = (k, item, q) => setSel((p) => {
     const cur = { ...(p[k] || {}) };
@@ -399,52 +581,84 @@ function App() {
     return { ...p, [k]: cur };
   });
 
-  const [video, setVideo] = useState(new Set());
+  const [video, setVideo] = sysState("video");
   const toggleVideo = (i) => setVideo((p) => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
-  // Timestamp for when the pull sheet was handed to the warehouse
-  const [handoff, setHandoff] = useState("");
+  // Job notes (per system)
+  const [notes, setNotes] = sysState("notes");
+
+  // Timestamp for when this system's sheet was handed to the warehouse (per system)
+  const [handoff, setHandoff] = sysState("handoff");
   const stampHandoff = () => {
     const d = new Date();
     setHandoff(d.toLocaleString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
   };
 
+  // Who planned this job, and when
+  const [plannedBy, setPlannedBy] = useState("");
+  const [datePlanned, setDatePlanned] = useState("");
+  const stampPlanned = () => {
+    const d = new Date();
+    setDatePlanned(d.toLocaleString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
+  };
+
   /* ---------------- save / load progress ---------------- */
   const collectData = () => ({
-    _format: "job-pull-sheet-v1",
-    job, pm, installers, equip, portables, portHeaters, portAC, portSource,
-    jobType, location, vent, pvcSize, pvcQty, concentric, concentricQty,
-    atticLadder, interiorAccess, extLadderNeed, extLadder,
-    newLineSet, lineSetSize, lpKit, lpKitModel,
-    discIndoor, discOutdoor, elecBrands, elec,
-    extraBoxes: [...extraBoxes], sel, special, supplyG, supplyGSpecial, zoneControl, zoneDampers, damperModel, lastKit, video: [...video], handoff,
+    _format: "job-pull-sheet-v2",
+    job, plannedBy, datePlanned, activeIdx,
+    systems: systems.map((s) => ({ ...s, extraBoxes: [...s.extraBoxes], video: [...s.video] })),
   });
 
   const applyData = (d) => {
-    if (!d || d._format !== "job-pull-sheet-v1") return false;
-    d.job && setJob(d.job);
-    d.pm && setPm(d.pm);
-    d.installers && setInstallers(d.installers);
-    d.equip && setEquip(d.equip);
-    setPortables(d.portables || ""); setPortHeaters(d.portHeaters || ""); setPortAC(d.portAC || ""); setPortSource(d.portSource || "");
-    setJobType(d.jobType || ""); setLocation(d.location || "");
-    setVent(d.vent || ""); setPvcSize(d.pvcSize || "2"); setPvcQty(d.pvcQty || "");
-    setConcentric(d.concentric || "2"); setConcentricQty(d.concentricQty || "1");
-    setAtticLadder(d.atticLadder || ""); setInteriorAccess(d.interiorAccess || "");
-    setExtLadderNeed(d.extLadderNeed || ""); setExtLadder(d.extLadder || "");
-    setNewLineSet(d.newLineSet || ""); setLineSetSize(d.lineSetSize || CATALOG.lineSetSizes[1]);
-    setLpKit(d.lpKit || ""); setLpKitModel(d.lpKitModel || "");
-    setDiscIndoor(d.discIndoor || ""); setDiscOutdoor(d.discOutdoor || "");
-    setElecBrands(d.elecBrands || ["", ""]); setElec(d.elec || {});
-    setExtraBoxes(new Set(d.extraBoxes || [])); setSel(d.sel || {});
-    setSpecial(d.special || {});
-    setSupplyG(d.supplyG || {}); setSupplyGSpecial(d.supplyGSpecial || ["", ""]);
-    setZoneControl(d.zoneControl || ""); setZoneDampers(d.zoneDampers || {});
-    setDamperModel(d.damperModel || "");
-    setLastKit(d.lastKit || null);
-    setVideo(new Set(d.video || []));
-    setHandoff(d.handoff || "");
-    return true;
+    if (!d) return false;
+    if (d._format === "job-pull-sheet-v2" && Array.isArray(d.systems) && d.systems.length) {
+      d.job && setJob(d.job);
+      setPlannedBy(d.plannedBy || ""); setDatePlanned(d.datePlanned || "");
+      const restored = d.systems.map((s, i) => ({
+        ...makeBlankSystem(s.label || `System ${i + 1}`),
+        ...s,
+        extraBoxes: new Set(s.extraBoxes || []),
+        video: new Set(s.video || []),
+        pvcQty: s.pvcQty && typeof s.pvcQty === "object" ? { "2": s.pvcQty["2"] || "", "3": s.pvcQty["3"] || "" } : { "2": "", "3": "" },
+      }));
+      setSystemsRaw(restored);
+      setActiveIdxRaw(Math.min(d.activeIdx || 0, restored.length - 1));
+      return true;
+    }
+    // Legacy single-system saved files — load everything into one "System 1".
+    if (d._format === "job-pull-sheet-v1") {
+      d.job && setJob(d.job);
+      setPlannedBy(d.plannedBy || ""); setDatePlanned(d.datePlanned || "");
+      const sys = {
+        ...makeBlankSystem("System 1"),
+        pm: d.pm || makeBlankSystem().pm,
+        installers: d.installers || ["", "", "", ""],
+        equip: d.equip || { brand: "", orderDate: "", delivery: "", pickup: "" },
+        portables: d.portables || "", portHeaters: d.portHeaters || "", portAC: d.portAC || "", portSource: d.portSource || "",
+        jobType: d.jobType || "", location: d.location || "",
+        vent: d.vent || "",
+        pvcQty: d.pvcQty && typeof d.pvcQty === "object" ? { "2": d.pvcQty["2"] || "", "3": d.pvcQty["3"] || "" } : { "2": "", "3": "" },
+        concentric: d.concentric || "2", concentricQty: d.concentricQty || "1",
+        atticLadder: d.atticLadder || "", interiorAccess: d.interiorAccess || "",
+        extLadderNeed: d.extLadderNeed || "", extLadder: d.extLadder || "",
+        newLineSet: d.newLineSet || "", lineSetSize: d.lineSetSize || CATALOG.lineSetSizes[1],
+        lpKit: d.lpKit || "", lpKitModel: d.lpKitModel || "",
+        discIndoor: d.discIndoor || "", discOutdoor: d.discOutdoor || "",
+        elecBrands: d.elecBrands || ["", ""], elec: d.elec || {},
+        extraBoxes: new Set(d.extraBoxes || []),
+        sel: d.sel || {}, special: d.special || {},
+        supplyG: d.supplyG || {}, supplyGSpecial: d.supplyGSpecial || ["", ""],
+        zoneControl: d.zoneControl || "", zoneDampers: d.zoneDampers || {}, damperModel: d.damperModel || "",
+        lastKit: d.lastKit || null,
+        video: new Set(d.video || []),
+        handoff: d.handoff || "",
+        notes: (d.job && d.job.notes) || "",
+      };
+      setSystemsRaw([sys]);
+      setActiveIdxRaw(0);
+      return true;
+    }
+    return false;
   };
 
   // On open, if this file was saved with data baked in, load it.
@@ -457,7 +671,7 @@ function App() {
 
   // When the Duct Material Job Box becomes active, default Duct Wrap to qty 1
   // (only on the transition into active; user can still change or zero it after).
-  const [ductDefaulted, setDuctDefaulted] = useState(false);
+  const [ductDefaulted, setDuctDefaulted] = sysState("ductDefaulted");
   useEffect(() => {
     if (ductBoxActive && !ductDefaulted) {
       setSel((p) => {
@@ -477,28 +691,15 @@ function App() {
     else if (zoneControl.startsWith("HARMONY 3")) setDamperModel("Honeywell Model # HARD");
   }, [zoneControl]);
 
-  // Clear everything back to a fresh, blank job.
+  // Clear everything back to a fresh, blank job (all systems).
   const resetForm = () => {
-    if (!window.confirm("Clear this sheet and start a new job? Anything not saved will be lost.")) return;
-    setJob({ jobNo: "", customer: "", address: "", city: "", state: "", zip: "", phone: "", installDate: "", notes: "" });
-    setPm({ needElectrician: "", electricianDateSet: "", keepOldEquip: "", keepOldNote: "", videosUploaded: "" });
-    setInstallers(["", "", "", ""]);
-    setEquip({ brand: "", orderDate: "", delivery: "", pickup: "" });
-    setPortables(""); setPortHeaters(""); setPortAC(""); setPortSource("");
-    setJobType(""); setLocation("");
-    setVent(""); setPvcSize("2"); setPvcQty("");
-    setConcentric("2"); setConcentricQty("1");
-    setAtticLadder(""); setInteriorAccess(""); setExtLadderNeed(""); setExtLadder("");
-    setNewLineSet(""); setLineSetSize(CATALOG.lineSetSizes[1]);
-    setLpKit(""); setLpKitModel("");
-    setDiscIndoor(""); setDiscOutdoor("");
-    setElecBrands(["", ""]); setElec({});
-    setExtraBoxes(new Set()); setSel({}); setSpecial({}); setVideo(new Set());
-    setSupplyG({}); setSupplyGSpecial(["", ""]);
-    setDuctWizard(null); setLastKit(null);
-    setZoneControl(""); setZoneDampers({}); setDamperModel("");
-    setHandoff("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    askConfirm("Clear this entire job (all systems) and start fresh? Anything not saved will be lost.", () => {
+      setJob({ jobNo: "", customer: "", address: "", city: "", state: "", zip: "", phone: "", installDate: "" });
+      setPlannedBy(""); setDatePlanned("");
+      setSystemsRaw([makeBlankSystem("System 1")]);
+      setActiveIdxRaw(0);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   };
 
   // Apply a pre-made duct system kit into the editable sections.
@@ -532,8 +733,10 @@ function App() {
       return next;
     });
     setSupplyG((p) => {
-      const cur = { ...(p[grillSize] || { floor: 0, ceiling: 0 }) };
-      cur[side] = (cur[side] || 0) + grillCount;
+      const prev = p[grillSize] || {};
+      const cur = { floor: normFloor(prev.floor), ceiling: prev.ceiling || 0 };
+      if (side === "ceiling") cur.ceiling = (cur.ceiling || 0) + grillCount;
+      else cur.floor.brown = (cur.floor.brown || 0) + grillCount; // defaults to Brown; adjust color below if needed
       return { ...p, [grillSize]: cur };
     });
     // Return grills → filter grills section (count + size from wizard)
@@ -548,7 +751,7 @@ function App() {
       });
     }
     setExtraBoxes((p) => { const n = new Set(p); n.add("Duct Material Job Box"); return n; });
-    setJob((j) => ({ ...j, notes: (j.notes ? j.notes + "\n" : "") + noteLine }));
+    setNotes((n) => (n ? n + "\n" : "") + noteLine);
     setLastKit(added);
     setDuctWizard(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -556,39 +759,44 @@ function App() {
 
   // Undo the last loaded duct kit — subtract exactly what it added.
   const undoDuctKit = () => {
-    if (!lastKit || !lastKit.sections) { alert("Nothing to undo."); return; }
-    if (!window.confirm(`Undo the ${lastKit.ton} duct kit? This removes the quantities it added.`)) return;
-    setSel((p) => {
-      const next = { ...p };
-      Object.entries(lastKit.sections).forEach(([key, obj]) => {
-        const cur = { ...(next[key] || {}) };
-        Object.entries(obj).forEach(([item, q]) => {
-          const remaining = (cur[item] || 0) - q;
-          if (remaining > 0) cur[item] = remaining; else delete cur[item];
-        });
-        next[key] = cur;
-      });
-      return next;
-    });
-    setSupplyG((p) => {
-      const { size, side, count } = lastKit.grill;
-      const cur = { ...(p[size] || { floor: 0, ceiling: 0 }) };
-      const remaining = (cur[side] || 0) - count;
-      if (remaining > 0) cur[side] = remaining; else cur[side] = 0;
-      if (!cur.floor && !cur.ceiling) { const n = { ...p }; delete n[size]; return n; }
-      return { ...p, [size]: cur };
-    });
-    if (lastKit.filterGrill) {
+    if (!lastKit || !lastKit.sections) { askConfirm("Nothing to undo.", null); return; }
+    askConfirm(`Undo the ${lastKit.ton} duct kit? This removes the quantities it added.`, () => {
       setSel((p) => {
-        const cur = { ...(p.filterGrills || {}) };
-        const { size, count } = lastKit.filterGrill;
-        const remaining = (cur[size] || 0) - count;
-        if (remaining > 0) cur[size] = remaining; else delete cur[size];
-        return { ...p, filterGrills: cur };
+        const next = { ...p };
+        Object.entries(lastKit.sections).forEach(([key, obj]) => {
+          const cur = { ...(next[key] || {}) };
+          Object.entries(obj).forEach(([item, q]) => {
+            const remaining = (cur[item] || 0) - q;
+            if (remaining > 0) cur[item] = remaining; else delete cur[item];
+          });
+          next[key] = cur;
+        });
+        return next;
       });
-    }
-    setJob((j) => ({ ...j, notes: (j.notes || "").split("\n").filter((l) => l !== lastKit.note).join("\n") }));
-    setLastKit(null);
+      setSupplyG((p) => {
+        const { size, side, count } = lastKit.grill;
+        const prev = p[size] || {};
+        const cur = { floor: normFloor(prev.floor), ceiling: prev.ceiling || 0 };
+        if (side === "ceiling") {
+          cur.ceiling = Math.max(0, (cur.ceiling || 0) - count);
+        } else {
+          cur.floor.brown = Math.max(0, (cur.floor.brown || 0) - count);
+        }
+        if (!cur.floor.brown && !cur.floor.white && !cur.ceiling) { const n = { ...p }; delete n[size]; return n; }
+        return { ...p, [size]: cur };
+      });
+      if (lastKit.filterGrill) {
+        setSel((p) => {
+          const cur = { ...(p.filterGrills || {}) };
+          const { size, count } = lastKit.filterGrill;
+          const remaining = (cur[size] || 0) - count;
+          if (remaining > 0) cur[size] = remaining; else delete cur[size];
+          return { ...p, filterGrills: cur };
+        });
+      }
+      setNotes((n) => (n || "").split("\n").filter((l) => l !== lastKit.note).join("\n"));
+      setLastKit(null);
+    });
   };
 
   // source + current data (does NOT photograph the live, running page).
@@ -601,9 +809,9 @@ function App() {
       '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n' +
       '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
       "<title>Job Information & Material Pull Sheet</title>\n" +
-      '<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js">' + ST + "\n" +
-      '<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js">' + ST + "\n" +
-      '<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js">' + ST + "\n" +
+      '<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js">' + ST + "\n" +
+      '<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js">' + ST + "\n" +
+      '<script src="https://unpkg.com/@babel/standalone/babel.min.js">' + ST + "\n" +
       "<style>html,body,#root{height:100%;margin:0;}</style>\n</head>\n<body>\n" +
       '<div id="root"></div>\n<script id="saved-state" type="application/json">';
     const mid = ST + '\n<script id="app-source" type="text/babel" data-presets="react">';
@@ -619,84 +827,8 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
-  /* ---------------- pull list ---------------- */
-  const pull = useMemo(() => {
-    const g = {};
-    const add = (grp, item, qty = 1) => { (g[grp] = g[grp] || []).push({ item, qty }); };
-    // Append a Ferguson part number (per-section first, then global) to a size label.
-    const withPart = (sectionKey, size, label) => {
-      const pn = (PART_NUMBERS_BY_SECTION[sectionKey] && PART_NUMBERS_BY_SECTION[sectionKey][size]) || PART_NUMBERS[size];
-      return pn ? `${label} (${pn})` : label;
-    };
-
-    if (jobType) {
-      // equipment description echoes the job type
-      add("Equipment", jobType);
-      if (equip.brand) add("Equipment", `Brand: ${equip.brand}`);
-    }
-
-    if (portables === "yes") {
-      const tag = portSource === "Pick up from job" ? " — crew picks up from job (do NOT pull)" : "";
-      if (Number(portHeaters) > 0) add("Portables", `Portable Heater${tag}`, Number(portHeaters));
-      if (Number(portAC) > 0) add("Portables", `Portable A/C Unit${tag}`, Number(portAC));
-    }
-
-    [...auto].forEach((b) => add("Job Boxes", b));
-    [...extraBoxes].forEach((b) => { if (!auto.has(b)) add("Job Boxes", b); });
-
-    if (zoneActive) {
-      if (zoneControl) add("Controls", `Zone Control: ${zoneControl}`);
-      if (damperModel) add("Controls", `Damper Model: ${damperModel}`);
-      Object.entries(zoneDampers).forEach(([size, q]) => add("Controls", `Zone Damper ${size}`, q));
-    }
-
-    // venting only if gas + a vent box chosen
-    if (flags.isGas) {
-      if (vent === "80") add("Venting", "B-Vent (see B-Vent job box)");
-      if (vent === "90") {
-        if (pvcQty) add("Venting", withPart("pvcAddon", `${pvcSize}" PVC Pipe 10ft`, `${pvcSize}" PVC Pipe 10ft`), Number(pvcQty));
-        add("Venting", withPart("concentric", `${concentric}" Concentric Kit`, `${concentric}" Concentric Kit`), Math.max(1, Number(concentricQty) || 1));
-      }
-    }
-
-    if (flags.isGas) add("Gas", "Gas Fitting Job Box");
-    if (flags.isGas && lpKit === "yes") add("Gas", `LP Conversion Kit — Model: ${lpKitModel || "★ MODEL NEEDED"}`, 1);
-
-    if (newLineSet === "yes") add("Line Set", withPart("lineSetSizes", lineSetSize, `Line Set ${lineSetSize}`), 1);
-
-    SECTIONS.forEach((s) => {
-      const v = sel[s.key];
-      if (s.mode === "single") { if (v) add(s.group, withPart(s.key, v, `${s.title}: ${v}`)); }
-      else if (v) Object.entries(v).forEach(([item, qty]) => add(s.group, item === s.title ? withPart(s.key, item, s.title) : withPart(s.key, item, `${s.title} ${item}`), qty));
-      if (s.special) (special[s.key] || []).forEach((txt) => { if (txt?.trim()) add(s.group, `${s.title} — Special ${s.key === "thermostats" ? "model" : "size"}: ${txt.trim()}`, 1); });
-    });
-
-    // Supply grills with Floor / Ceiling split
-    Object.entries(supplyG).forEach(([size, qs]) => {
-      if (qs.floor > 0) add("Air Distribution", `Supply Grill ${size} — Floor`, qs.floor);
-      if (qs.ceiling > 0) add("Air Distribution", `Supply Grill ${size} — Ceiling`, qs.ceiling);
-    });
-    supplyGSpecial.forEach((txt) => { if (txt?.trim()) add("Air Distribution", `Supply Grill — Special size: ${txt.trim()}`, 1); });
-
-    if (discIndoor && Number(discIndoor) > 0) add("Electrical", "100 Amp Square D Homeline 6 Spaces 12 Circuit Main Lug Load Center — Indoor", Number(discIndoor));
-    if (discOutdoor && Number(discOutdoor) > 0) add("Electrical", "100 Amp Square D Homeline 6 Spaces 12 Circuit Main Lug Load Center — Outdoor", Number(discOutdoor));
-
-    elecBrands.forEach((b, i) => { if (b) add("Electrical", `Breaker Brand${elecBrands.filter(Boolean).length > 1 ? ` ${i + 1}` : ""}: ${b}`); });
-    ELEC_SECTIONS.forEach((s) =>
-      s.cat && CATALOG[s.cat].forEach((item) => {
-        const q = elec[`${s.title}|${item}`];
-        const brandSuffix = s.key === "surge"; // surge has its own brand built in
-        if (q?.b1 > 0) add("Electrical", withPart(s.key, item, `${s.title} ${item}`) + (brandSuffix ? "" : ` — ${elecBrands[0] || "Brand 1"}`), q.b1);
-        if (q?.b2 > 0) add("Electrical", withPart(s.key, item, `${s.title} ${item}`) + (brandSuffix ? "" : ` — ${elecBrands[1] || "Brand 2"}`), q.b2);
-      })
-    );
-
-    if (extLadderNeed === "yes" && extLadder) add("Access / Tools", extLadder, 1);
-    if (isAttic && atticLadder === "yes" && interiorAccess && /Ladder/.test(interiorAccess)) add("Access / Tools", interiorAccess, 1);
-
-    return PULL_ORDER.filter((k) => g[k]?.length).map((k) => ({ group: k, items: g[k] }));
-  }, [jobType, equip.brand, portables, portHeaters, portAC, portSource, auto, extraBoxes, flags, vent, pvcSize, pvcQty, concentric, concentricQty, lpKit, lpKitModel,
-    newLineSet, lineSetSize, sel, special, supplyG, supplyGSpecial, zoneActive, zoneControl, zoneDampers, damperModel, discIndoor, discOutdoor, elecBrands, elec, extLadderNeed, extLadder, isAttic, atticLadder, interiorAccess]);
+  /* ---------------- pull list (for the currently active system) ---------------- */
+  const pull = useMemo(() => buildPull(activeSystem), [activeSystem]);
 
   const totalLines = pull.reduce((n, gr) => n + gr.items.length, 0);
 
@@ -704,7 +836,7 @@ function App() {
   if (!jobType) missing.push("job type");
   if (!location) missing.push("equipment location");
   if (flags.isGas && !vent) missing.push("venting (80/90)");
-  if (flags.isGas && vent === "90" && !pvcQty) missing.push("PVC qty");
+  if (flags.isGas && vent === "90" && !(Number(pvcQty["2"]) > 0 || Number(pvcQty["3"]) > 0)) missing.push("PVC qty");
   if (flags.isGas && !lpKit) missing.push("LP kit y/n");
   if (flags.isGas && lpKit === "yes" && !lpKitModel) missing.push("LP kit model #");
   if (isAttic && !atticLadder) missing.push("attic ladder y/n");
@@ -720,7 +852,7 @@ function App() {
     jobType: !jobType,
     location: !location,
     vent: flags.isGas && !flags.isGasPack && !vent,
-    pvcQty: flags.isGas && !flags.isGasPack && vent === "90" && !pvcQty,
+    pvcQty: flags.isGas && !flags.isGasPack && vent === "90" && !(Number(pvcQty["2"]) > 0 || Number(pvcQty["3"]) > 0),
     lpKit: flags.isGas && !lpKit,
     lpKitModel: flags.isGas && lpKit === "yes" && !lpKitModel,
   };
@@ -733,11 +865,21 @@ function App() {
 
   const guard = (action) => {
     if (requiredMissing.length === 0) { action(); return; }
-    if (window.confirm("Missing required fields:\n\n• " + requiredMissing.join("\n• ") + "\n\nContinue anyway?")) action();
+    askConfirm("Missing required fields:\n\n• " + requiredMissing.join("\n• ") + "\n\nContinue anyway?", action);
   };
 
   // Merge a red outline onto an input when that required field is empty.
   const rq = (isMissing) => (isMissing ? { ...S.in, borderColor: "#c0392b", background: "#fff4f2" } : S.in);
+
+  // Which system(s) to show when the browser print dialog opens.
+  const [printTarget, setPrintTarget] = useState("current"); // "current" | "all"
+  useEffect(() => {
+    const reset = () => setPrintTarget("current");
+    window.addEventListener("afterprint", reset);
+    return () => window.removeEventListener("afterprint", reset);
+  }, []);
+  const printCurrent = () => { setPrintTarget("current"); setTimeout(() => window.print(), 50); };
+  const printAllSystems = () => { setPrintTarget("all"); setTimeout(() => window.print(), 50); };
 
   const grouped = useMemo(() => {
     const out = {};
@@ -748,16 +890,73 @@ function App() {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
+
+      {confirmDialog && (
+        <div style={S.confirmOverlay} className="no-print">
+          <div style={S.confirmBox}>
+            <div style={S.confirmMsg}>{confirmDialog.message}</div>
+            <div style={S.confirmBtns}>
+              {confirmDialog.onConfirm && (
+                <button type="button" style={S.clearBtn} onClick={() => setConfirmDialog(null)}>Cancel</button>
+              )}
+              <button
+                type="button"
+                style={S.saveBtn}
+                onClick={() => {
+                  const fn = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  if (fn) fn();
+                }}
+              >
+                {confirmDialog.onConfirm ? "Confirm" : "OK"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header style={S.topbar} className="no-print">
         <div style={S.brand}><span style={S.mark}>▲</span>JOB PLANNING &amp; MATERIAL PULL</div>
         <span style={S.sub}>Conditional Logic Build Sheet</span>
       </header>
+
+      <div style={S.sysTabBar} className="no-print">
+        {systems.map((s, i) => (
+          <div key={i} style={{ ...S.sysTab, ...(i === activeIdx ? S.sysTabActive : {}) }}>
+            <button type="button" style={S.sysTabBtn} onClick={() => setActiveIdxRaw(i)}>{s.label || `System ${i + 1}`}</button>
+            {systems.length > 1 && (
+              <button type="button" style={S.sysTabClose} title={`Remove ${s.label || `System ${i + 1}`}`} onClick={() => removeSystem(i)}>×</button>
+            )}
+          </div>
+        ))}
+        <button type="button" style={S.sysTabAdd} onClick={addSystem}>+ Add System</button>
+        <div style={{ flex: 1, minWidth: 12 }} />
+        <label style={S.sysRenameLabel}>
+          <span style={S.fl}>Rename current system</span>
+          <input style={{ ...S.in, width: 160 }} value={activeSystem.label || ""}
+            onChange={(e) => updateSystemAt(activeIdx, (s) => ({ ...s, label: e.target.value }))}
+            placeholder="e.g. 1st Floor Unit" />
+        </label>
+        {systems.length > 1 && (
+          <button type="button" style={{ ...S.saveBtn, flexShrink: 0 }} onClick={() => guard(printAllSystems)}>⎙ Print All Systems ({systems.length})</button>
+        )}
+      </div>
 
       <div style={S.grid} className="layout-grid">
         {/* ============ LEFT: INPUTS ============ */}
         <section style={S.col} className="no-print">
 
           <Block n="1" title="Job Information">
+            <Row>
+              <Field l="Planned By"><input style={S.in} value={plannedBy} onChange={(e) => setPlannedBy(e.target.value)} /></Field>
+              <Field l="Date Planned">
+                <Row>
+                  <button style={S.stampBtn} onClick={stampPlanned}>🕒 Stamp now</button>
+                  {datePlanned && <button style={S.clearStamp} onClick={() => setDatePlanned("")}>Clear</button>}
+                </Row>
+                {datePlanned && <div style={S.stampShown}>{datePlanned}</div>}
+              </Field>
+            </Row>
             <Row>
               <Field l="Job #"><input style={S.in} value={job.jobNo} onChange={(e) => setJob({ ...job, jobNo: e.target.value })} /></Field>
               <Field l="Install Date"><input style={rq(req.installDate)} type="date" value={job.installDate} onChange={(e) => setJob({ ...job, installDate: e.target.value })} /></Field>
@@ -795,7 +994,7 @@ function App() {
                   <SelectOther value={v}
                     onChange={(val) => { const n = [...installers]; n[i] = val; setInstallers(n); }}
                     options={ALL_INSTALLERS}
-                    groups={[{ label: "Mechanics", items: MECHANICS }, { label: "Helpers", items: HELPERS }]} />
+                    groups={[{ label: "Mechanics", items: mechanics }, { label: "Helpers", items: helpers }]} />
                 </Field>
               ))}
             </Row>
@@ -842,7 +1041,19 @@ function App() {
                 </>
               )}
             </div>
-            <Field l="Job Notes"><textarea style={{ ...S.in, minHeight: 50, resize: "vertical" }} value={job.notes} onChange={(e) => setJob({ ...job, notes: e.target.value })} /></Field>
+            <Field l="Job Notes (this system)"><textarea style={{ ...S.in, minHeight: 50, resize: "vertical" }} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+          </Block>
+
+          <Block n="1b" title="Manage Installer Roster" collapsible>
+            <div style={S.note}>Add or remove names here — they update the Installer 1–4 dropdowns above right away. Saved in this browser, so it sticks around next time you open this tool here.</div>
+            <Row>
+              <RosterEditor label="Mechanics" names={mechanics}
+                onAdd={(n) => addRosterName(mechanics, setMechanics, n)}
+                onRemove={(n) => removeRosterName(mechanics, setMechanics, n)} />
+              <RosterEditor label="Helpers" names={helpers}
+                onAdd={(n) => addRosterName(helpers, setHelpers, n)}
+                onRemove={(n) => removeRosterName(helpers, setHelpers, n)} />
+            </Row>
           </Block>
 
           <Block n="2" title="Equipment & Logistics">
@@ -961,11 +1172,17 @@ function App() {
               {vent === "90" && (
                 <div style={S.subBox}>
                   <div style={S.auto}>✔ Pulls 90% Furnace PVC Job Box + add-ons</div>
-                  <Field l="PVC pipe size"><Pills v={pvcSize} set={setPvcSize} opts={["2", "3"]} suf='"' /></Field>
-                  <Field l="PVC qty (10ft sticks)"><input style={rq(req.pvcQty)} type="number" min="0" value={pvcQty} onChange={(e) => setPvcQty(e.target.value)} /></Field>
+                  <Field l="PVC Pipe QTY (10ft sticks, by size)">
+                    <Row>
+                      <Field l={'2" PVC'}><input style={rq(req.pvcQty)} type="number" min="0" value={pvcQty["2"]} onChange={(e) => setPvcQty((p) => ({ ...p, "2": e.target.value }))} /></Field>
+                      <Field l={'3" PVC'}><input style={rq(req.pvcQty)} type="number" min="0" value={pvcQty["3"]} onChange={(e) => setPvcQty((p) => ({ ...p, "3": e.target.value }))} /></Field>
+                    </Row>
+                  </Field>
                   <Row>
-                    <Field l="Concentric kit"><Pills v={concentric} set={setConcentric} opts={["2", "3"]} suf='"' /></Field>
-                    <Field l="Concentric QTY"><input style={S.in} type="number" min="1" value={concentricQty} onChange={(e) => setConcentricQty(e.target.value)} /></Field>
+                    <Field l="Concentric kit"><Pills v={concentric} set={setConcentric} opts={[{ v: "2", l: '2"' }, { v: "3", l: '3"' }, { v: "none", l: "Not Needed" }]} /></Field>
+                    {concentric !== "none" && (
+                      <Field l="Concentric QTY"><input style={S.in} type="number" min="1" value={concentricQty} onChange={(e) => setConcentricQty(e.target.value)} /></Field>
+                    )}
                   </Row>
                 </div>
               )}
@@ -1109,11 +1326,11 @@ function App() {
                           </div>);
                       })}</div>}
                   {s.special && (
-                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                      {[0, 1].map((i) => (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 6 }}>
+                      {Array.from({ length: s.specialCount || 2 }, (_, i) => i).map((i) => (
                         <input key={i} style={S.in} value={(special[s.key] || [])[i] || ""}
                           onChange={(e) => setSpecial((p) => {
-                            const arr = [...(p[s.key] || ["", ""])];
+                            const arr = [...(p[s.key] || Array(s.specialCount || 2).fill(""))];
                             arr[i] = e.target.value;
                             return { ...p, [s.key]: arr };
                           })}
@@ -1125,19 +1342,22 @@ function App() {
               ))}
               {group === "Air Distribution" && (
                 <div style={S.secWrap}>
-                  <div style={S.secTitle}>Supply Grill — Floor / Ceiling</div>
+                  <div style={S.secTitle}>Supply Grill — Floor (Brown / White) / Ceiling</div>
                   <div style={S.elecHead}>
                     <span>Size</span>
-                    <span style={S.elecCols}><span>FLOOR</span><span>CEIL</span></span>
+                    <span style={S.elecCols}><span>FLOOR · BROWN</span><span>FLOOR · WHITE</span><span>CEIL</span></span>
                   </div>
                   {CATALOG.supplyGrills.map((size) => {
-                    const qs = supplyG[size] || { floor: 0, ceiling: 0 };
-                    const on = qs.floor || qs.ceiling;
+                    const raw = supplyG[size] || {};
+                    const floor = normFloor(raw.floor);
+                    const ceiling = raw.ceiling || 0;
+                    const on = floor.brown || floor.white || ceiling;
                     return (
-                      <div key={size} style={{ ...S.elecRow, ...(on ? S.qtyOn : {}) }}>
+                      <div key={size} style={{ ...S.elecRow, gridTemplateColumns: "1fr auto auto auto", ...(on ? S.qtyOn : {}) }}>
                         <span style={S.elecLbl}>{size}</span>
-                        <Stepper q={qs.floor} onMinus={() => bumpSupplyG(size, "floor", -1)} onPlus={() => bumpSupplyG(size, "floor", 1)} />
-                        <Stepper q={qs.ceiling} onMinus={() => bumpSupplyG(size, "ceiling", -1)} onPlus={() => bumpSupplyG(size, "ceiling", 1)} />
+                        <Stepper q={floor.brown} onMinus={() => bumpSupplyG(size, "floorBrown", -1)} onPlus={() => bumpSupplyG(size, "floorBrown", 1)} />
+                        <Stepper q={floor.white} onMinus={() => bumpSupplyG(size, "floorWhite", -1)} onPlus={() => bumpSupplyG(size, "floorWhite", 1)} />
+                        <Stepper q={ceiling} onMinus={() => bumpSupplyG(size, "ceiling", -1)} onPlus={() => bumpSupplyG(size, "ceiling", 1)} />
                       </div>
                     );
                   })}
@@ -1178,123 +1398,158 @@ function App() {
           </Block>
         </section>
 
-        {/* ============ RIGHT: OUTPUT SHEET ============ */}
+        {/* ============ RIGHT: OUTPUT SHEET(S) ============ */}
         <section style={S.sheet} className="sheet-panel">
-          <div style={S.sheetHead}>
-            <div>
-              <div style={S.sheetTitle}>JOB INFORMATION &amp; MATERIAL PULL SHEET</div>
-              <div style={S.meta}>
-                Job #{job.jobNo || "—"} · {job.customer || "—"}<br />
-                {job.address || "—"}{job.city ? `, ${job.city}` : ""}{job.state ? `, ${job.state}` : ""} {job.zip}<br />
-                {jobType || "no job type"} · {location || "no location"}<br />
-                Install {job.installDate || "—"} · {equip.brand || "—"} · {totalLines} line items<br />
-                Crew: {installers.filter(Boolean).length
-                  ? installers.filter(Boolean).map((nm, i) => <span key={i} style={S.crewName}>{nm}</span>)
-                  : "—"}
-                {handoff && <><br /><span style={S.handoffStamp}>🕒 Handed to warehouse: {handoff}</span></>}
-              </div>
-            </div>
-            <div style={S.btnRow} className="no-print">
-              <button style={S.clearBtn} onClick={resetForm}>✕ Clear</button>
-              <button style={S.saveBtn} onClick={() => guard(saveProgress)}>💾 Save</button>
-              <button style={S.print} onClick={() => guard(() => window.print())}>⎙ Print</button>
-            </div>
-          </div>
-
-          {missing.length > 0 && <div style={S.warn} className="no-print">Still needed: {missing.join(", ")}.</div>}
-
-          <div style={S.secLabel}>▣ WAREHOUSE — PULL LIST</div>
-          {pull.length === 0 && <div style={S.empty}>Pick a job type to start building the list.</div>}
-          {pull.map((g) => (
-            <div key={g.group} style={S.pg}>
-              <div style={S.pgTitle}>{g.group}</div>
-              {g.items.map((it, i) => {
-                const pn = extractPart(it.item);
-                return (
-                  <div key={it.item + i} style={S.pi}>
-                    <span style={S.box}>☐</span><span style={S.qtyChip}>{it.qty}</span>
-                    <span style={{ flex: 1 }}>
-                      {renderItem(it.item)}
-                      {pn && <span style={S.bcWrap}><Barcode value={pn} /><span style={S.bcText}>{pn}</span></span>}
-                    </span>
-                  </div>
-                );
-              })}
+          {systems.map((s, i) => (
+            <div key={i}
+              className={printTarget === "all" ? "sheet-instance force-print-block" : "sheet-instance"}
+              style={{ display: i === activeIdx ? "block" : "none" }}>
+              <PrintSheet
+                sys={s}
+                job={job}
+                plannedBy={plannedBy}
+                datePlanned={datePlanned}
+                interactive={i === activeIdx}
+                missing={i === activeIdx ? missing : []}
+                systemCount={systems.length}
+                onClear={resetForm}
+                onSave={() => guard(saveProgress)}
+                onPrint={() => guard(printCurrent)}
+                onPrintAll={() => guard(printAllSystems)}
+              />
             </div>
           ))}
-
-          <div style={{ ...S.secLabel, marginTop: 18 }}>▣ WAREHOUSE — RECORD MODEL &amp; SERIAL #</div>
-          <div style={S.msNote}>Write the model &amp; serial for each unit below, OR peel the sticker from the equipment and place it in the box.</div>
-          {equipmentUnitsFor(jobType).length === 0 && <div style={S.empty}>Pick a job type to list the equipment.</div>}
-          {equipmentUnitsFor(jobType).map((unit) => (
-            <div key={unit} style={S.msUnit} className="ms-unit">
-              <div style={S.msUnitName}>{unit}</div>
-              <div style={S.msRow}>
-                <div style={S.msLines}>
-                  <div style={S.msLine}><span style={S.msLbl}>Model #</span><span style={S.msWrite}></span></div>
-                  <div style={S.msLine}><span style={S.msLbl}>Serial #</span><span style={S.msWrite}></span></div>
-                </div>
-                <div style={S.msSticker}>Place sticker here</div>
-              </div>
-            </div>
-          ))}
-
-          <div style={{ ...S.secLabel, marginTop: 18 }}>▣ INSTALLER JOB SPEC</div>
-          <div style={S.spec}>
-            <SL k="Job Type" v={jobType || "—"} />
-            <SL k="Location" v={location || "—"} />
-            <SL k="Brand" v={equip.brand || "—"} />
-            <SL k="Venting" v={!flags.isGas ? "n/a" : vent === "80" ? "80% B-Vent" : vent === "90" ? `90% PVC ${pvcSize}" ×${pvcQty || "?"} + ${concentric}" conc. ×${concentricQty || 1}` : "—"} />
-            <SL k="LP Kit" v={!flags.isGas ? "n/a" : lpKit === "yes" ? `Yes${lpKitModel ? ` — ${lpKitModel}` : " (model?)"}` : lpKit === "no" ? "No" : "—"} />
-            <SL k="Line Set" v={newLineSet === "yes" ? lineSetSize : newLineSet === "no" ? "Reuse existing" : "—"} />
-            <SL k="Attic Access" v={isAttic ? (atticLadder === "yes" ? interiorAccess || "ladder needed" : "no ladder") : "n/a"} />
-            <SL k="Ext. Ladder" v={extLadderNeed === "yes" ? extLadder || "yes" : "no"} />
-            <SL k="Thermostat" v={(() => {
-              const picks = Object.entries(sel.thermostats || {}).map(([m, q]) => `${m} ×${q}`);
-              const specials = (special.thermostats || []).filter((s) => s?.trim()).map((s) => s.trim());
-              return [...picks, ...specials].join(", ") || "—";
-            })()} />
-            <SL k="Portables" v={portables !== "yes" ? "None" : (() => {
-              const parts = [];
-              if (Number(portHeaters) > 0) parts.push(`${portHeaters} Portable Heater${Number(portHeaters) > 1 ? "s" : ""}`);
-              if (Number(portAC) > 0) parts.push(`${portAC} Portable A/C${Number(portAC) > 1 ? " units" : ""}`);
-              const where = portSource ? ` — ${portSource}` : "";
-              return parts.length ? parts.join(", ") + where : "Yes (qty?)";
-            })()} />
-            <SL k="Delivery" v={equip.delivery ? equip.delivery + (equip.pickup ? ` (${equip.pickup})` : "") : "—"} />
-          </div>
-
-          {video.size > 0 && (
-            <>
-              <div style={{ ...S.secLabel, marginTop: 18 }}>▣ VIDEO / PHOTO CHECKLIST</div>
-              <div style={S.spec}>
-                {[...video].map((id) => {
-                  const [cat, it] = id.split("|");
-                  return <div key={id} style={S.pi}><span style={S.box}>☐</span><span style={{ color: "#9a968c", fontSize: 11 }}>{cat}</span> {it}</div>;
-                })}
-              </div>
-            </>
-          )}
-
-          {(pm.needElectrician || pm.keepOldEquip || pm.videosUploaded) && (
-            <>
-              <div style={{ ...S.secLabel, marginTop: 18 }}>▣ PROJECT MANAGER</div>
-              <div style={S.spec}>
-                {pm.needElectrician && <SL k="Electrician for new circuit" v={pm.needElectrician + (pm.needElectrician === "Yes" ? ` · install date set: ${pm.electricianDateSet || "?"}` : "")} />}
-                {pm.keepOldEquip && <SL k="Keep old equipment" v={pm.keepOldEquip + (pm.keepOldEquip === "Yes" && pm.keepOldNote ? `: ${pm.keepOldNote}` : "")} />}
-                {pm.videosUploaded && <SL k="Videos uploaded to ServiceTitan" v={pm.videosUploaded} />}
-              </div>
-            </>
-          )}
-
-          {job.notes && (<><div style={{ ...S.secLabel, marginTop: 18 }}>▣ JOB NOTES</div><div style={S.notesBox}>{job.notes}</div></>)}
         </section>
       </div>
     </div>
   );
 }
 
-/* ---------- components ---------- */
+/* ---------- printed sheet for a single system (used once per system) ---------- */
+const PrintSheet = ({ sys, job, plannedBy, datePlanned, interactive, missing, systemCount, onClear, onSave, onPrint, onPrintAll }) => {
+  const flags = deriveFlags(sys.jobType || "");
+  const isAttic = /Attic/.test(sys.location || "");
+  const pull = useMemo(() => buildPull(sys), [sys]);
+  const totalLines = pull.reduce((n, gr) => n + gr.items.length, 0);
+  const equipUnits = equipmentUnitsFor(sys.jobType);
+
+  return (
+    <>
+      <div style={S.sheetHead}>
+        <div>
+          <div style={S.sheetTitle}>JOB INFORMATION &amp; MATERIAL PULL SHEET</div>
+          <div style={S.meta}>
+            Planned by: {plannedBy ? <span style={S.crewName}>{plannedBy}</span> : "—"}{datePlanned ? ` · ${datePlanned}` : ""}<br />
+            Job #{job.jobNo || "—"} · {job.customer || "—"}{job.phone ? ` · ${job.phone}` : ""}<br />
+            {job.address || "—"}{job.city ? `, ${job.city}` : ""}{job.state ? `, ${job.state}` : ""} {job.zip}<br />
+            System: <b>{sys.label || "—"}</b> · {sys.jobType || "no job type"} · {sys.location || "no location"}<br />
+            Install {job.installDate || "—"} · {sys.equip.brand || "—"} · {totalLines} line items<br />
+            Crew: {sys.installers.filter(Boolean).length
+              ? sys.installers.filter(Boolean).map((nm, i) => <span key={i} style={S.crewName}>{nm}</span>)
+              : "—"}
+            {sys.handoff && <><br /><span style={S.handoffStamp}>🕒 Handed to warehouse: {sys.handoff}</span></>}
+          </div>
+        </div>
+        {interactive && (
+          <div style={S.btnRow} className="no-print">
+            <button style={S.clearBtn} onClick={onClear}>✕ Clear</button>
+            <button style={S.saveBtn} onClick={onSave}>💾 Save</button>
+            <button style={S.print} onClick={onPrint}>⎙ Print This System</button>
+            {systemCount > 1 && <button style={S.saveBtn} onClick={onPrintAll}>⎙ Print All ({systemCount})</button>}
+          </div>
+        )}
+      </div>
+
+      {interactive && missing.length > 0 && <div style={S.warn} className="no-print">Still needed: {missing.join(", ")}.</div>}
+
+      {(sys.pm.needElectrician || sys.pm.keepOldEquip || sys.pm.videosUploaded) && (
+        <>
+          <div style={S.secLabel}>▣ PROJECT MANAGER</div>
+          <div style={S.spec}>
+            {sys.pm.needElectrician && <SL k="Electrician for new circuit" v={sys.pm.needElectrician + (sys.pm.needElectrician === "Yes" ? ` · install date set: ${sys.pm.electricianDateSet || "?"}` : "")} />}
+            {sys.pm.keepOldEquip && <SL k="Keep old equipment" v={sys.pm.keepOldEquip + (sys.pm.keepOldEquip === "Yes" && sys.pm.keepOldNote ? `: ${sys.pm.keepOldNote}` : "")} />}
+            {sys.pm.videosUploaded && <SL k="Videos uploaded to ServiceTitan" v={sys.pm.videosUploaded} />}
+          </div>
+        </>
+      )}
+
+      {sys.notes && (<><div style={{ ...S.secLabel, marginTop: (sys.pm.needElectrician || sys.pm.keepOldEquip || sys.pm.videosUploaded) ? 18 : 0 }}>▣ JOB NOTES</div><div style={S.notesBox}>{sys.notes}</div></>)}
+
+      <div style={{ ...S.secLabel, marginTop: (sys.pm.needElectrician || sys.pm.keepOldEquip || sys.pm.videosUploaded || sys.notes) ? 18 : 0 }}>▣ WAREHOUSE — PULL LIST</div>
+      {pull.length === 0 && <div style={S.empty}>Pick a job type to start building the list.</div>}
+      {pull.map((g) => (
+        <div key={g.group} style={S.pg}>
+          <div style={S.pgTitle}>{g.group}</div>
+          {g.items.map((it, i) => {
+            const pn = extractPart(it.item);
+            return (
+              <div key={it.item + i} style={S.pi}>
+                <span style={S.box}>☐</span><span style={S.qtyChip}>{it.qty}</span>
+                <span style={{ flex: 1 }}>
+                  {renderItem(it.item)}
+                  {pn && <span style={S.bcWrap}><Barcode value={pn} /><span style={S.bcText}>{pn}</span></span>}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      <div style={{ ...S.secLabel, marginTop: 18 }}>▣ WAREHOUSE — RECORD MODEL &amp; SERIAL #</div>
+      <div style={S.msNote}>Write the model &amp; serial for each unit below, OR peel the sticker from the equipment and place it in the box.</div>
+      {equipUnits.length === 0 && <div style={S.empty}>Pick a job type to list the equipment.</div>}
+      {equipUnits.map((unit) => (
+        <div key={unit} style={S.msUnit} className="ms-unit">
+          <div style={S.msUnitName}>{unit}</div>
+          <div style={S.msRow}>
+            <div style={S.msLines}>
+              <div style={S.msLine}><span style={S.msLbl}>Model #</span><span style={S.msWrite}></span></div>
+              <div style={S.msLine}><span style={S.msLbl}>Serial #</span><span style={S.msWrite}></span></div>
+            </div>
+            <div style={S.msSticker}>Place sticker here</div>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ ...S.secLabel, marginTop: 18 }}>▣ INSTALLER JOB SPEC</div>
+      <div style={S.spec}>
+        <SL k="Job Type" v={sys.jobType || "—"} />
+        <SL k="Location" v={sys.location || "—"} />
+        <SL k="Brand" v={sys.equip.brand || "—"} />
+        <SL k="Venting" v={!flags.isGas ? "n/a" : sys.vent === "80" ? "80% B-Vent" : sys.vent === "90" ? `90% PVC — ${["2", "3"].filter((s) => Number(sys.pvcQty[s]) > 0).map((s) => `${s}"×${sys.pvcQty[s]}`).join(", ") || "qty?"}${sys.concentric === "none" ? " · no concentric kit" : ` + ${sys.concentric}" conc. ×${sys.concentricQty || 1}`}` : "—"} />
+        <SL k="LP Kit" v={!flags.isGas ? "n/a" : sys.lpKit === "yes" ? `Yes${sys.lpKitModel ? ` — ${sys.lpKitModel}` : " (model?)"}` : sys.lpKit === "no" ? "No" : "—"} />
+        <SL k="Line Set" v={sys.newLineSet === "yes" ? sys.lineSetSize : sys.newLineSet === "no" ? "Reuse existing" : "—"} />
+        <SL k="Attic Access" v={isAttic ? (sys.atticLadder === "yes" ? sys.interiorAccess || "ladder needed" : "no ladder") : "n/a"} />
+        <SL k="Ext. Ladder" v={sys.extLadderNeed === "yes" ? sys.extLadder || "yes" : "no"} />
+        <SL k="Thermostat" v={(() => {
+          const picks = Object.entries(sys.sel.thermostats || {}).map(([m, q]) => `${m} ×${q}`);
+          const specials = (sys.special.thermostats || []).filter((s) => s?.trim()).map((s) => s.trim());
+          return [...picks, ...specials].join(", ") || "—";
+        })()} />
+        <SL k="Portables" v={sys.portables !== "yes" ? "None" : (() => {
+          const parts = [];
+          if (Number(sys.portHeaters) > 0) parts.push(`${sys.portHeaters} Portable Heater${Number(sys.portHeaters) > 1 ? "s" : ""}`);
+          if (Number(sys.portAC) > 0) parts.push(`${sys.portAC} Portable A/C${Number(sys.portAC) > 1 ? " units" : ""}`);
+          const where = sys.portSource ? ` — ${sys.portSource}` : "";
+          return parts.length ? parts.join(", ") + where : "Yes (qty?)";
+        })()} />
+        <SL k="Delivery" v={sys.equip.delivery ? sys.equip.delivery + (sys.equip.pickup ? ` (${sys.equip.pickup})` : "") : "—"} />
+      </div>
+
+      {sys.video.size > 0 && (
+        <>
+          <div style={{ ...S.secLabel, marginTop: 18 }}>▣ VIDEO / PHOTO CHECKLIST</div>
+          <div style={S.spec}>
+            {[...sys.video].map((id) => {
+              const [cat, it] = id.split("|");
+              return <div key={id} style={S.pi}><span style={S.box}>☐</span><span style={{ color: "#9a968c", fontSize: 11 }}>{cat}</span> {it}</div>;
+            })}
+          </div>
+        </>
+      )}
+    </>
+  );
+};
 const Block = ({ n, title, children, collapsible, openSignal, id }) => {
   const [open, setOpen] = useState(!collapsible);
   useEffect(() => { if (openSignal) setOpen(true); }, [openSignal]);
@@ -1317,6 +1572,33 @@ const Stepper = ({ q, onMinus, onPlus }) => (
 );
 const Field = ({ l, children }) => <label style={S.field}><span style={S.fl}>{l}</span>{children}</label>;
 const SL = ({ k, v }) => <div style={S.sl}><span style={S.slk}>{k}</span><span style={S.slv}>{v}</span></div>;
+
+// Editable name list for the installer roster (add via text box, remove via ×).
+const RosterEditor = ({ label, names, onAdd, onRemove }) => {
+  const [text, setText] = useState("");
+  const submit = () => { onAdd(text); setText(""); };
+  return (
+    <div style={{ flex: 1, minWidth: 220 }}>
+      <div style={S.fl}>{label}</div>
+      <div style={S.pills}>
+        {names.map((n) => (
+          <span key={n} style={{ ...S.pill, display: "inline-flex", alignItems: "center", gap: 6, cursor: "default" }}>
+            {n}
+            <button type="button" title={`Remove ${n}`} onClick={() => onRemove(n)}
+              style={{ border: "none", background: "transparent", color: "inherit", cursor: "pointer", fontWeight: 700, fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+          </span>
+        ))}
+        {names.length === 0 && <span style={S.note}>None yet.</span>}
+      </div>
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <input style={{ ...S.in, flex: 1 }} value={text} placeholder={`Add a ${label.toLowerCase().slice(0, -1)}…`}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }} />
+        <button type="button" style={S.stampBtn} onClick={submit}>+ Add</button>
+      </div>
+    </div>
+  );
+};
 
 // Pull a trailing "(PARTNUMBER)" out of an item label, if present.
 const extractPart = (text) => {
@@ -1416,6 +1698,17 @@ const S = {
   brand: { fontFamily: "'Oswald',sans-serif", fontWeight: 600, letterSpacing: ".11em", fontSize: 17, display: "flex", gap: 10, alignItems: "center" },
   mark: { color: amber }, sub: { fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#9a978f" },
   grid: { display: "grid", gridTemplateColumns: "minmax(340px,1.15fr) minmax(300px,.85fr)", alignItems: "start" },
+  sysTabBar: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: paper, borderBottom: `1px solid ${line}`, padding: "10px 20px" },
+  sysTab: { display: "flex", alignItems: "stretch", border: `1px solid ${line}`, borderRadius: 3, overflow: "hidden", background: "#fff" },
+  sysTabActive: { borderColor: ink, background: "#fff8ec" },
+  sysTabBtn: { fontFamily: "'Oswald',sans-serif", fontSize: 12.5, letterSpacing: ".03em", padding: "7px 12px", background: "transparent", border: "none", cursor: "pointer", color: ink },
+  sysTabClose: { fontSize: 13, fontWeight: 700, padding: "0 9px", background: "transparent", border: "none", borderLeft: `1px solid ${line}`, cursor: "pointer", color: "#8a2020" },
+  sysTabAdd: { fontFamily: "'Oswald',sans-serif", fontSize: 12.5, padding: "8px 12px", background: "#fff", color: ink, border: `1px dashed ${line}`, borderRadius: 3, cursor: "pointer" },
+  sysRenameLabel: { display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 },
+  confirmOverlay: { position: "fixed", inset: 0, background: "rgba(22,25,29,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
+  confirmBox: { background: paper, border: `1px solid ${line}`, borderRadius: 4, padding: "18px 20px", maxWidth: 420, width: "90%", boxShadow: "0 10px 30px rgba(0,0,0,.25)" },
+  confirmMsg: { fontFamily: "'JetBrains Mono',monospace", fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.5, color: ink },
+  confirmBtns: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 },
   col: { padding: 20, display: "flex", flexDirection: "column", gap: 12 },
   block: { background: paper, border: `1px solid ${line}`, borderRadius: 4, padding: "12px 14px" },
   bHead: { fontFamily: "'Oswald',sans-serif", fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", fontSize: 13.5, display: "flex", alignItems: "center", gap: 10 },
@@ -1502,6 +1795,8 @@ const CSS = `
   *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}
   .ms-unit{break-inside:avoid;page-break-inside:avoid;}
   .barcode{break-inside:avoid;page-break-inside:avoid;}
+  .force-print-block{display:block !important;}
+  .force-print-block + .force-print-block{break-before:page;page-break-before:always;}
   @page{margin:0.5in;}
 }
 `;
